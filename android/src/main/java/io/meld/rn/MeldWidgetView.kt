@@ -1,5 +1,6 @@
 package io.meld.rn
 
+import android.view.View
 import android.widget.FrameLayout
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReadableMap
@@ -20,6 +21,9 @@ class MeldWidgetView(private val reactContext: ThemedReactContext) : FrameLayout
 
     private var handle: MeldWidgetHandle? = null
     private var order: ReadableMap? = null
+    // Once dropped, ignore any late callback from the native SDK (parity with iOS's [weak self]:
+    // the handlers capture this view strongly, so a stray event after teardown must be a no-op).
+    private var released = false
 
     /** The order JSON from JS. Mount once it arrives. */
     fun setOrder(order: ReadableMap?) {
@@ -53,10 +57,17 @@ class MeldWidgetView(private val reactContext: ThemedReactContext) : FrameLayout
                             putString("status", e.status.raw)
                             putString("providerStatus", e.providerStatus ?: "")
                         }
-                        // Forward the raw provider payload when it's a map, for parity with native.
-                        (e.raw as? Map<*, *>)?.let {
-                            @Suppress("UNCHECKED_CAST")
-                            payload.putMap("raw", Arguments.makeNativeMap(it as Map<String, Any?>))
+                        // Forward the raw provider payload when it's a JSON-serializable map, for
+                        // parity with iOS (which guards with JSONSerialization.isValidJSONObject).
+                        // Non-string keys / non-bridgeable values would throw in makeNativeMap and
+                        // break event emission, so drop raw on failure rather than crash.
+                        (e.raw as? Map<*, *>)?.let { rawMap ->
+                            try {
+                                @Suppress("UNCHECKED_CAST")
+                                payload.putMap("raw", Arguments.makeNativeMap(rawMap as Map<String, Any?>))
+                            } catch (ignored: Exception) {
+                                // raw not bridge-serializable — omit it, same as iOS
+                            }
                         }
                         emit("onStatusChange", payload)
                     },
@@ -72,11 +83,15 @@ class MeldWidgetView(private val reactContext: ThemedReactContext) : FrameLayout
 
     /** Tear down when RN drops the view (see MeldWidgetViewManager.onDropViewInstance). */
     fun unmount() {
+        released = true
         handle?.unmount()
         handle = null
     }
 
     private fun emit(name: String, payload: WritableMap) {
+        // Drop events after teardown or before RN has assigned a tag — receiveEvent to an invalid
+        // id is a no-op at best, a logged error at worst.
+        if (released || id == View.NO_ID) return
         reactContext.getJSModule(RCTEventEmitter::class.java).receiveEvent(id, name, payload)
     }
 
