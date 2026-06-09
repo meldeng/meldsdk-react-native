@@ -17,9 +17,10 @@ end
 target 'MeldRNDemo' do
   config = use_native_modules!
 
-  # Local Meld native SDK (the wrapper's MeldReactNative.podspec depends on it).
-  # Path is relative to this Podfile: example/ios -> repo root.
-  pod 'MeldSDK', :path => '../../../..'
+  # The native Meld iOS SDK (the wrapper's MeldReactNative.podspec depends on it). For local dev
+  # this points at a sibling meldsdk-ios checkout; integrators use the git tag instead — see the
+  # README. Path is relative to this Podfile: example/ios -> ../../../meldsdk-ios.
+  pod 'MeldSDK', :path => '../../../meldsdk-ios'
 
   use_react_native!(
     :path => config[:reactNativePath],

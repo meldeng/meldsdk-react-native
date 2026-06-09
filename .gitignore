@@ -1,0 +1,21 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Android / Gradle
+build/
+.gradle/
+local.properties
+.cxx/
+*.iml
+
+# Xcode / CocoaPods (the wrapper ships ios/ sources; build output is ignored)
+ios/build/
+Pods/
+*.xcworkspace
+!default.xcworkspace
+
+# Misc
+.DS_Store
+.idea/
