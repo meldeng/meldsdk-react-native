@@ -1,0 +1,30 @@
+{
+  "name": "@meldcrypto/react-native-sdk",
+  "version": "0.2.0",
+  "description": "React Native wrapper for the Meld SDK (iOS + Android) — embed a crypto on/off-ramp provider widget (Mercuryo card).",
+  "source": "src/index.tsx",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "react-native": "src/index.tsx",
+  "files": [
+    "src",
+    "ios",
+    "android",
+    "MeldReactNative.podspec",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": ["meld", "crypto", "onramp", "mercuryo", "react-native", "ios", "android"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meldeng/meldsdk-react-native.git"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout wrapper
+        uses: actions/checkout@v4
+
+      - name: Checkout meldsdk-android (native SDK dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: meldeng/meldsdk-android
+          path: meldsdk-android
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The wrapper depends on io.meld:meldsdk; publish it to the local Maven repo so the example
+      # resolves it (example/android adds mavenLocal()).
+      - name: Publish native SDK to Maven local
+        run: ./gradlew :meldsdk:publishToMavenLocal
+        working-directory: meldsdk-android
+
+      - name: Install JS deps (links the wrapper via file:..)
+        run: npm install
+        working-directory: example
+
+      - name: Build example Android app (compiles the wrapper module + native SDK)
+        run: ./gradlew :app:assembleDebug
+        working-directory: example/android
