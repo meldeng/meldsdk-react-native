@@ -1,6 +1,5 @@
 package io.meld.rn
 
-import android.view.View
 import android.widget.FrameLayout
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReadableMap
@@ -89,9 +88,10 @@ class MeldWidgetView(private val reactContext: ThemedReactContext) : FrameLayout
     }
 
     private fun emit(name: String, payload: WritableMap) {
-        // Drop events after teardown or before RN has assigned a tag — receiveEvent to an invalid
-        // id is a no-op at best, a logged error at worst.
-        if (released || id == View.NO_ID) return
+        // Ignore late callbacks after teardown (parity with iOS [weak self]). We deliberately do
+        // NOT gate on id == NO_ID: the first INVALID_ORDER/MOUNT_FAILED can be emitted synchronously
+        // during prop-set, and dropping it would reintroduce the silent blank-view failure.
+        if (released) return
         reactContext.getJSModule(RCTEventEmitter::class.java).receiveEvent(id, name, payload)
     }
 
