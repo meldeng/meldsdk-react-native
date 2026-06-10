@@ -17,7 +17,7 @@ autolinked — wire it per platform:
 ### iOS
 
 Until `MeldSDK` is on CocoaPods trunk, reference it from GitHub by tag in your `ios/Podfile`, then
-install on the **old architecture** with **static frameworks** (`MeldSDK` is a Swift pod):
+install with **static frameworks** (`MeldSDK` is a Swift pod):
 
 ```ruby
 pod 'MeldSDK', :git => 'https://github.com/meldeng/meldsdk-ios.git', :tag => '0.1.1'
@@ -28,19 +28,10 @@ cd ios && USE_FRAMEWORKS=static pod install
 
 ### Android
 
-Add the repository that serves `io.meld:meldsdk` (the native Android SDK) to your app's
-`android/build.gradle`. JitPack for releases; `mavenLocal()` if you build the SDK locally:
-
-```gradle
-allprojects {
-    repositories {
-        maven { url("https://www.jitpack.io") }
-    }
-}
-```
-
-`minSdk 24`+. The Android SDK declares the `INTERNET` and `CAMERA` permissions (camera is used for
-in-widget KYC); they merge into your app automatically.
+Nothing to wire up beyond autolinking: the wrapper's Gradle module pulls in the native Android SDK
+(`io.meld:meldsdk`) from Maven Central, which is in the default repositories of new Android
+projects. `minSdk 24`+. The Android SDK declares the `INTERNET` and `CAMERA` permissions (camera is
+used for in-widget KYC); they merge into your app automatically.
 
 > The wrapper uses RN's legacy (Paper) view/module APIs, which run on the **New Architecture via
 > RN's interop layer** — the default on RN 0.85. No extra configuration is needed; `USE_FRAMEWORKS=static`
@@ -92,33 +83,9 @@ both are client-side UX signals. Mark the order paid only when your backend rece
 
 ## Example app
 
-A complete, runnable demo for **both platforms** is checked in at [`example/`](example/) (same flow
-as the iOS, Android, and web demos). It links the wrapper from this repo via `file:..`, so changes
-here are picked up directly.
-
-```bash
-cd example
-npm install
-cp .env.example .env   # add your creds (see example/README.md)
-```
-
-**iOS** (needs a sibling `meldsdk-ios` checkout for the local `MeldSDK` pod):
-
-```bash
-cd ios && USE_FRAMEWORKS=static pod install && cd ..
-npm start            # terminal 1 — keep running
-npm run ios          # terminal 2
-```
-
-**Android** (needs `io.meld:meldsdk` — build it locally from a sibling `meldsdk-android` checkout
-once: `./gradlew publishReleasePublicationToMavenLocal`):
-
-```bash
-npm start            # terminal 1 — keep running
-npm run android      # terminal 2
-```
-
-More detail in [example/README.md](example/README.md).
+A complete, runnable demo for **both platforms** is in [`example/`](example/) — the same flow as
+the iOS, Android, and web demos (live quote → wallet → Buy → mounted widget, with a status banner
+and event log). See [example/README.md](example/README.md) to set up credentials and run it.
 
 ## License
 
