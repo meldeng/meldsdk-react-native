@@ -48,12 +48,13 @@ Needs Xcode + CocoaPods, and a sibling `meldsdk-ios` checkout (the local `MeldSD
 from `../../../meldsdk-ios`). One-time pod install, then run:
 
 ```bash
-cd ios && RCT_NEW_ARCH_ENABLED=0 USE_FRAMEWORKS=static pod install && cd ..
+cd ios && USE_FRAMEWORKS=static pod install && cd ..
 npm run ios            # terminal 2
 ```
 
-Why the flags: build the **old architecture** (`RCT_NEW_ARCH_ENABLED=0`) and use **static
-frameworks** (`USE_FRAMEWORKS=static`, since `MeldSDK` is a Swift pod).
+Why the flag: `USE_FRAMEWORKS=static` is required because `MeldSDK` is a Swift pod. The wrapper's
+legacy Paper view/module runs on the New Architecture via RN's interop layer (the RN 0.85 default),
+so no new-arch flag is needed.
 
 ### Android
 
@@ -79,4 +80,5 @@ KYC uses the camera; the app requests the `CAMERA` permission on first launch.
   UX hints; mark the order paid only on Meld's `TRANSACTION_STATUS_CHANGED` webhook to your backend.
 - **Mercuryo prerequisites:** the customer needs APPROVED Sumsub KYC; KYC uses the camera (a real
   device, not a simulator/emulator); the order's `clientIpAddress` must match the device's egress IP.
-- **New Architecture** (`RCT_NEW_ARCH_ENABLED=1`) is not supported yet on either platform.
+- **New Architecture:** the wrapper's legacy Paper view/module runs via RN's interop layer (the
+  RN 0.85 default on both platforms) — no extra configuration needed.

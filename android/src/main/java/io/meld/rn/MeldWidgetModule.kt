@@ -12,11 +12,12 @@ import io.meld.sdk.MeldOrder
 
 /**
  * Exposes `Meld.configure` and `Meld.capabilities` to JS under the native module name
- * "MeldWidgetManager" (matches `NativeModules.MeldWidgetManager` and the iOS manager).
+ * "MeldModule" (matches `NativeModules.MeldModule` and the iOS `MeldModule`). Kept separate from
+ * the view manager so it's an unambiguous native module on both architectures.
  */
 class MeldWidgetModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
-    override fun getName() = "MeldWidgetManager"
+    override fun getName() = "MeldModule"
 
     @ReactMethod
     fun configure(environment: String) {

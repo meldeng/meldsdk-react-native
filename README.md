@@ -23,7 +23,7 @@ install on the **old architecture** with **static frameworks** (`MeldSDK` is a S
 pod 'MeldSDK', :git => 'https://github.com/meldeng/meldsdk-ios.git', :tag => '0.1.1'
 ```
 ```bash
-cd ios && RCT_NEW_ARCH_ENABLED=0 USE_FRAMEWORKS=static pod install
+cd ios && USE_FRAMEWORKS=static pod install
 ```
 
 ### Android
@@ -42,7 +42,9 @@ allprojects {
 `minSdk 24`+. The Android SDK declares the `INTERNET` and `CAMERA` permissions (camera is used for
 in-widget KYC); they merge into your app automatically.
 
-> New Architecture (`RCT_NEW_ARCH_ENABLED=1`) is not supported yet on either platform.
+> The wrapper uses RN's legacy (Paper) view/module APIs, which run on the **New Architecture via
+> RN's interop layer** — the default on RN 0.85. No extra configuration is needed; `USE_FRAMEWORKS=static`
+> is required only because `MeldSDK` is a Swift pod.
 
 ## Usage (identical on both platforms)
 
@@ -103,7 +105,7 @@ cp .env.example .env   # add your creds (see example/README.md)
 **iOS** (needs a sibling `meldsdk-ios` checkout for the local `MeldSDK` pod):
 
 ```bash
-cd ios && RCT_NEW_ARCH_ENABLED=0 USE_FRAMEWORKS=static pod install && cd ..
+cd ios && USE_FRAMEWORKS=static pod install && cd ..
 npm start            # terminal 1 — keep running
 npm run ios          # terminal 2
 ```

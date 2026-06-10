@@ -34,7 +34,7 @@ export interface MeldCapabilities {
 export const Meld = {
   /** One-time setup. Mirrors `Meld.configure(environment:)` on native. */
   configure(environment: MeldEnvironment): void {
-    NativeModules.MeldWidgetManager.configure(environment);
+    NativeModules.MeldModule.configure(environment);
   },
 
   /**
@@ -42,7 +42,7 @@ export const Meld = {
    * crosses the native bridge (the web/iOS equivalent is synchronous).
    */
   capabilities(order: object): Promise<MeldCapabilities> {
-    return NativeModules.MeldWidgetManager.capabilities(order);
+    return NativeModules.MeldModule.capabilities(order);
   },
 };
 

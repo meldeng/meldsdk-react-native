@@ -10,9 +10,4 @@ RCT_EXPORT_VIEW_PROPERTY(onStatusChange, RCTDirectEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onCancel, RCTDirectEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onError, RCTDirectEventBlock)
 
-RCT_EXTERN_METHOD(configure:(NSString *)environment)
-RCT_EXTERN_METHOD(capabilities:(NSDictionary *)order
-                  resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-
 @end
