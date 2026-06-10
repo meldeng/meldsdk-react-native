@@ -35,7 +35,7 @@ jobs:
       # The wrapper depends on io.meld:meldsdk; publish it to the local Maven repo so the example
       # resolves it (example/android adds mavenLocal()).
       - name: Publish native SDK to Maven local
-        run: ./gradlew :meldsdk:publishReleasePublicationToMavenLocal
+        run: ./gradlew :meldsdk:publishToMavenLocal
         working-directory: meldsdk-android
 
       - name: Install JS deps (links the wrapper via file:..)

@@ -64,7 +64,7 @@ your local Maven repo, which `android/build.gradle` reads via `mavenLocal()`:
 
 ```bash
 # in the meldsdk-android checkout:
-./gradlew publishReleasePublicationToMavenLocal
+./gradlew publishToMavenLocal
 ```
 
 ```bash
