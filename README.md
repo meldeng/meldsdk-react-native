@@ -16,12 +16,9 @@ autolinked — wire it per platform:
 
 ### iOS
 
-Until `MeldSDK` is on CocoaPods trunk, reference it from GitHub by tag in your `ios/Podfile`, then
-install with **static frameworks** (`MeldSDK` is a Swift pod):
+`MeldSDK` (the wrapper's pod dependency) resolves by name from CocoaPods trunk, so there's nothing
+to add to your `Podfile`. Just install with **static frameworks** (`MeldSDK` is a Swift pod):
 
-```ruby
-pod 'MeldSDK', :git => 'https://github.com/meldeng/meldsdk-ios.git', :tag => '0.1.1'
-```
 ```bash
 cd ios && USE_FRAMEWORKS=static pod install
 ```
