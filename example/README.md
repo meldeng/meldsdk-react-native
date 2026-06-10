@@ -6,8 +6,9 @@ a status banner + event log and auto-close on a terminal outcome. Same flow and 
 native [iOS](https://github.com/meldeng/meldsdk-ios/tree/main/Example),
 [Android](https://github.com/meldeng/meldsdk-android/tree/main/example), and web examples.
 
-This example links the wrapper from the repo root via `file:..` (see `metro.config.js`), so changes
-to the wrapper are picked up directly.
+This example consumes the **published** packages — `@meldcrypto/react-native-sdk` from npm, with
+its native deps `MeldSDK` (CocoaPods trunk) and `io.meld:meldsdk` (Maven Central) — so it doubles as
+a release smoke test of the full stack.
 
 > ⚠️ **POC:** the app creates the order by calling Meld **directly**, so the API key sits in the
 > app. A real app creates the order on its backend — the SDK never sees the key.
@@ -29,7 +30,7 @@ cp .env.example .env      # then edit .env:
 ## 2. Install
 
 ```bash
-npm install            # installs RN deps + links the wrapper from the repo root
+npm install            # installs RN deps + @meldcrypto/react-native-sdk from npm
 ```
 
 ## 3. Run
@@ -44,8 +45,8 @@ npm start              # terminal 1 — wait for "Dev server ready" on http://lo
 
 ### iOS
 
-Needs Xcode + CocoaPods, and a sibling `meldsdk-ios` checkout (the local `MeldSDK` pod is resolved
-from `../../../meldsdk-ios`). One-time pod install, then run:
+Needs Xcode + CocoaPods. `MeldSDK` resolves by name from CocoaPods trunk. One-time pod install,
+then run:
 
 ```bash
 cd ios && USE_FRAMEWORKS=static pod install && cd ..
@@ -58,18 +59,11 @@ so no new-arch flag is needed.
 
 ### Android
 
-Needs the Android SDK and the native `io.meld:meldsdk` artifact. For local dev, build it once from a
-sibling [`meldsdk-android`](https://github.com/meldeng/meldsdk-android) checkout — it publishes to
-your local Maven repo, which `android/build.gradle` reads via `mavenLocal()`:
+Needs the Android SDK. The native `io.meld:meldsdk` resolves from Maven Central — nothing to build
+locally:
 
 ```bash
-# in the meldsdk-android checkout:
-./gradlew publishToMavenLocal
-```
-
-```bash
-# back here, terminal 2:
-npm run android
+npm run android        # terminal 2
 ```
 
 KYC uses the camera; the app requests the `CAMERA` permission on first launch.

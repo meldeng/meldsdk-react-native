@@ -10,7 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@meldcrypto/react-native-sdk": "file:..",
+    "@meldcrypto/react-native-sdk": "^0.2.0",
     "@react-native/new-app-screen": "0.85.3",
     "react": "19.2.3",
     "react-native": "0.85.3",

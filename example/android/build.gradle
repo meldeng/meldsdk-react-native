@@ -22,9 +22,7 @@ apply plugin: "com.facebook.react.rootproject"
 
 allprojects {
     repositories {
-        // The native Meld SDK (io.meld:meldsdk). mavenLocal for local dev
-        // (./gradlew publishReleasePublicationToMavenLocal in meldsdk-android); JitPack for releases.
-        mavenLocal()
-        maven { url("https://www.jitpack.io") }
+        // The native Meld SDK (io.meld:meldsdk) is published to Maven Central.
+        mavenCentral()
     }
 }
