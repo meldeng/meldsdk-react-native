@@ -9,7 +9,9 @@
   "files": [
     "src",
     "ios",
-    "android",
+    "android/src",
+    "android/build.gradle",
+    "react-native.config.js",
     "MeldReactNative.podspec",
     "README.md",
     "LICENSE"
