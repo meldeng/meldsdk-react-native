@@ -1,6 +1,6 @@
 // React Native library module. AGP and the Kotlin plugin come from the host app's classpath
 // (RN apps are Kotlin-based), so this module declares no buildscript of its own. The host app
-// must expose the JitPack repo so `io.meld:meldsdk` resolves — see the README.
+// must expose the Maven repository that serves `io.meld:meldsdk` — see the README.
 apply plugin: "com.android.library"
 apply plugin: "org.jetbrains.kotlin.android"
 
@@ -32,5 +32,5 @@ dependencies {
     // Version supplied by the host app's React Native Gradle plugin.
     implementation "com.facebook.react:react-android"
     // The native Meld SDK this wraps (kept in lockstep). Resolved from JitPack/Maven by the app.
-    implementation "io.meld:meldsdk:0.1.0"
+    implementation "io.meld:meldsdk:0.1.1"
 }
