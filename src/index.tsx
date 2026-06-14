@@ -4,6 +4,14 @@ import { requireNativeComponent, NativeModules, type ViewStyle } from 'react-nat
 export type MeldEnvironment = 'sandbox' | 'production';
 export type MeldStatus = 'pending' | 'completed' | 'failed' | 'cancelled';
 
+/**
+ * The `HeadlessOrderResponse` from your backend (`POST /crypto/order/headless`). The SDK forwards
+ * it to the native layer verbatim and never reads individual fields, so this is an open JSON
+ * object (string keys, `unknown` values) rather than a fixed schema — but it's narrower than
+ * `object`: callers must pass a string-keyed map and narrow values before using them.
+ */
+export type MeldOrder = Record<string, unknown>;
+
 export interface MeldStatusChange {
   orderId?: string;
   /** Normalized status — code against this, not `providerStatus`. */
@@ -41,7 +49,7 @@ export const Meld = {
    * Inspect an order before rendering `<MeldWidget>` — guard on `.embeddable`. Async because it
    * crosses the native bridge (the web/iOS equivalent is synchronous).
    */
-  capabilities(order: object): Promise<MeldCapabilities> {
+  capabilities(order: MeldOrder): Promise<MeldCapabilities> {
     return NativeModules.MeldModule.capabilities(order);
   },
 };
@@ -49,7 +57,7 @@ export const Meld = {
 // The native component (registered by MeldWidgetManager). Events arrive under `nativeEvent`.
 interface NativeProps {
   style?: ViewStyle;
-  order: object;
+  order: MeldOrder;
   onReady?: (e: { nativeEvent: { orderId?: string } }) => void;
   onPaymentSubmitted?: (e: { nativeEvent: { orderId?: string } }) => void;
   onStatusChange?: (e: { nativeEvent: MeldStatusChange }) => void;
@@ -61,7 +69,7 @@ const NativeMeldWidget = requireNativeComponent<NativeProps>('MeldWidget');
 export interface MeldWidgetProps {
   style?: ViewStyle;
   /** The HeadlessOrderResponse from your backend (`POST /crypto/order/headless`), passed through. */
-  order: object;
+  order: MeldOrder;
   onReady?: (orderId?: string) => void;
   onPaymentSubmitted?: (orderId?: string) => void;
   onStatusChange?: (e: MeldStatusChange) => void;
