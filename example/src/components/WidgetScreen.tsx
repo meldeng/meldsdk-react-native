@@ -1,12 +1,11 @@
 import React, { useRef } from 'react';
 import { SafeAreaView, View, Text, ScrollView, StyleSheet } from 'react-native';
-import { MeldWidget } from '@meldcrypto/react-native-sdk';
+import { MeldWidget, type MeldOrder } from '@meldcrypto/react-native-sdk';
 import { useWidgetEvents } from '../hooks/useWidgetEvents';
-import { type Order } from '../api/meld';
 import { StatusBanner } from './StatusBanner';
 
 export interface WidgetScreenProps {
-  order: Order;
+  order: MeldOrder;
   onClose: () => void;
 }
 

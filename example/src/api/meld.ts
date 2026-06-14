@@ -1,9 +1,6 @@
+import { type MeldOrder } from '@meldcrypto/react-native-sdk';
 import { CONFIG, ORDER } from '../config';
 import { uuidv4 } from '../utils/uuid';
-
-// The HeadlessOrderResponse JSON, passed straight to <MeldWidget>. Stricter than `object`; matches
-// the SDK's exported `MeldOrder` shape without coupling the demo to that (newer) export.
-export type Order = Record<string, unknown>;
 
 export interface Quote {
   destinationAmount?: number;
@@ -52,7 +49,7 @@ export async function fetchQuote(): Promise<Quote> {
 export async function createOrder(
   customerId: string,
   wallet: string,
-): Promise<Order> {
+): Promise<MeldOrder> {
   const res = await post('/crypto/order/headless', {
     customerId,
     externalOrderId: `rn-demo-${Date.now()}`,

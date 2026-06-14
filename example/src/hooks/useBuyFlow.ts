@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { createOrder, type Order } from '../api/meld';
+import { type MeldOrder } from '@meldcrypto/react-native-sdk';
+import { createOrder } from '../api/meld';
 
 // Owns the created order plus the create-order request state (busy/error). When `order` is set,
 // the app shows the widget screen; `closeOrder` returns to checkout.
 export function useBuyFlow() {
-  const [order, setOrder] = useState<Order | null>(null);
+  const [order, setOrder] = useState<MeldOrder | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
