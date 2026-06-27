@@ -1,5 +1,5 @@
 import React from 'react';
-import { requireNativeComponent, NativeModules, type ViewStyle } from 'react-native';
+import { Platform, requireNativeComponent, NativeModules, type ViewStyle } from 'react-native';
 
 export type MeldEnvironment = 'sandbox' | 'production';
 export type MeldStatus = 'pending' | 'completed' | 'failed' | 'cancelled';
@@ -52,7 +52,53 @@ export const Meld = {
   capabilities(order: MeldOrder): Promise<MeldCapabilities> {
     return NativeModules.MeldModule.capabilities(order);
   },
+
+  /**
+   * Whether native Apple Pay can be presented now (device/user can pay, and we're on iOS).
+   * Apple Pay is iOS-only — always resolves `false` on Android.
+   */
+  canPresentApplePay(): Promise<boolean> {
+    if (Platform.OS !== 'ios' || !NativeModules.MeldApplePay) return Promise.resolve(false);
+    return NativeModules.MeldApplePay.isAvailable();
+  },
+
+  /**
+   * Present the native Apple Pay sheet for a Mercuryo native Apple Pay (NAP) order — an order
+   * created with `paymentMethodType: 'APPLE_PAY'`. There is NO `<MeldWidget>` for this surface
+   * (`capabilities(order).surface === 'native-applepay'`, `embeddable === false`); the SDK presents
+   * the system sheet itself. Resolves on a successful/pending payment; rejects with
+   * `code: 'cancelled' | 'failed' | 'error' | 'unavailable' | 'invalid_order' | 'bad_request'`.
+   *
+   * `request` supplies what the order doesn't carry (amount/currency/wallet/IP). `clientIpAddress`
+   * must be the same device IP used when the order was created (Mercuryo binds the tx to it).
+   * Settlement is still your backend webhook, not this promise.
+   */
+  presentApplePay(order: MeldOrder, request: MeldApplePayRequest): Promise<MeldApplePayResult> {
+    if (Platform.OS !== 'ios' || !NativeModules.MeldApplePay) {
+      return Promise.reject(new Error('Apple Pay is only available on iOS'));
+    }
+    return NativeModules.MeldApplePay.presentApplePay(order, request);
+  },
 };
+
+/** Inputs the Apple Pay sheet needs beyond what the order carries. */
+export interface MeldApplePayRequest {
+  /** Fiat amount as a decimal string, e.g. "15.00". Matches the order's source amount. */
+  amount: string;
+  /** Fiat currency, ISO 4217, e.g. "EUR". Matches the order's source currency. */
+  currencyCode: string;
+  /** Destination crypto wallet address. */
+  walletAddress: string;
+  /** Device public IP — Mercuryo binds the tx to it; use the same IP as order creation. */
+  clientIpAddress: string;
+  email?: string;
+  /** Line-item label on the sheet (Apple prepends "Pay "). */
+  summaryItemLabel?: string;
+}
+
+export interface MeldApplePayResult {
+  status: 'success';
+}
 
 // The native component (registered by MeldWidgetManager). Events arrive under `nativeEvent`.
 interface NativeProps {

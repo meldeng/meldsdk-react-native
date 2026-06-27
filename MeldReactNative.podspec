@@ -15,5 +15,6 @@ Pod::Spec.new do |s|
 
   # The React Native host, and the native Meld SDK this wraps (kept in lockstep).
   s.dependency 'React-Core'
-  s.dependency 'MeldSDK', '~> 0.1.0'
+  # 0.2 adds native Apple Pay (Mercuryo NAP) — see Meld.presentApplePay.
+  s.dependency 'MeldSDK', '~> 0.2'
 end
