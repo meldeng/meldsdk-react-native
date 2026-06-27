@@ -72,6 +72,43 @@ Optionally guard before rendering: `if ((await Meld.capabilities(order)).embedda
 `e.providerStatus`). A terminal `failed` also fires `onError`, and a `cancelled` also fires
 `onCancel`. Every callback also receives the `orderId`.
 
+## Native Apple Pay (Mercuryo NAP)
+
+When your backend creates an order with `paymentMethodType: 'APPLE_PAY'`, it isn't an embeddable
+widget — it's a native Apple Pay sheet (`capabilities(order).surface === 'native-applepay'`,
+`embeddable === false`). There's no `<MeldWidget>` to render; call `Meld.presentApplePay` directly.
+**iOS only** (Apple Pay isn't available on Android).
+
+```tsx
+import { Meld } from '@meldcrypto/react-native-sdk';
+
+Meld.configure('production');
+
+// Gate your button on availability (false on Android / no card / restricted).
+const canApplePay = await Meld.canPresentApplePay();
+
+// order = the APPLE_PAY HeadlessOrderResponse from your backend.
+try {
+  await Meld.presentApplePay(order, {
+    amount: '15.00',
+    currencyCode: 'EUR',
+    walletAddress: 'bc1q…',
+    clientIpAddress: deviceIp,        // same IP used when the order was created
+    summaryItemLabel: 'Acme — Buy BTC',
+  });
+  // resolved → payment authorized & accepted (status pending/completed). Show "processing".
+} catch (e) {
+  // e.code: 'cancelled' | 'failed' | 'error' | 'unavailable' | 'invalid_order' | 'bad_request'
+}
+```
+
+**Prerequisites (one-time, in your Apple Developer account):** an Apple Pay **merchant identifier**
+with the **Payment Processing** + **Merchant Identity** certificates registered with Meld for your
+account, and the **Apple Pay capability** enabled on your app target with that same merchant id
+(the order's `merchantIdentifier`) in your entitlements. This is a bare-RN package — add the
+entitlement in Xcode (or your own config plugin); we don't inject it for you. Mercuryo NAP does
+**not** process US/GB users — use a supported corridor (EU/CA).
+
 ## Settlement — webhook, never the SDK
 
 Neither `onPaymentSubmitted` nor `onStatusChange` with `status === 'completed'` is settlement —
