@@ -1,0 +1,51 @@
+name: Release
+
+# Publishes @meldcrypto/react-native-sdk to npm when a version tag is pushed.
+# The published version is the tag name (a leading "v" is stripped), e.g.:
+#   git tag 0.3.1 && git push origin 0.3.1
+# The package ships source (src/, ios/, android/src, podspec, gradle) — no build step.
+#
+# Auth: npm OIDC "Trusted Publishing" — no token, nothing to rotate/expire.
+# One-time setup on npmjs.com: package @meldcrypto/react-native-sdk -> Settings -> Trusted
+# Publisher -> GitHub Actions -> org/repo = meldeng/meldsdk-react-native, workflow = release.yml.
+# (No provenance: it requires a public source repo, and this repo is private.)
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: read
+  id-token: write   # mint the short-lived OIDC token npm exchanges for a publish credential
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # OIDC trusted publishing needs npm >= 11.5.1; the node image ships an older npm.
+      - name: Upgrade npm (OIDC support)
+        run: npm install -g npm@latest
+
+      - name: Set version from tag
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
+      - name: Publish to npm (OIDC trusted publishing)
+        # Prereleases (…-beta.N etc.) go under a matching dist-tag, not "latest".
+        run: |
+          case "${GITHUB_REF_NAME#v}" in
+            *-alpha*) TAG=alpha ;;
+            *-beta*)  TAG=beta ;;
+            *-rc*)    TAG=rc ;;
+            *)        TAG=latest ;;
+          esac
+          npm publish --access public --tag "$TAG"

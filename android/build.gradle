@@ -32,5 +32,5 @@ dependencies {
     // Version supplied by the host app's React Native Gradle plugin.
     implementation "com.facebook.react:react-android"
     // The native Meld SDK this wraps (kept in lockstep). Resolved from JitPack/Maven by the app.
-    implementation "io.meld:meldsdk:0.1.1"
+    implementation "io.meld:meldsdk:0.3.0"
 }

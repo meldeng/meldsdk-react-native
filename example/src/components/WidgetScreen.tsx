@@ -6,13 +6,17 @@ import { StatusBanner } from './StatusBanner';
 
 export interface WidgetScreenProps {
   order: MeldOrder;
+  providerName: string;
   onClose: () => void;
 }
 
 // Mounts <MeldWidget> for a created order and shows a live event log beneath it.
-export function WidgetScreen({ order, onClose }: WidgetScreenProps) {
+export function WidgetScreen({ order, providerName, onClose }: WidgetScreenProps) {
   const { lines, status, handlers } = useWidgetEvents(onClose);
   const logRef = useRef<ScrollView>(null);
+  const title = providerName
+    ? providerName.charAt(0) + providerName.slice(1).toLowerCase()
+    : 'Checkout';
 
   return (
     <SafeAreaView style={styles.widgetPage}>
@@ -20,7 +24,7 @@ export function WidgetScreen({ order, onClose }: WidgetScreenProps) {
         <Text style={styles.back} onPress={onClose}>
           ← Back
         </Text>
-        <Text style={styles.widgetTitle}>Mercuryo</Text>
+        <Text style={styles.widgetTitle}>{title}</Text>
       </View>
       <MeldWidget style={styles.fill} order={order} {...handlers} />
       <View style={styles.logPanel}>

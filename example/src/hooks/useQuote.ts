@@ -1,55 +1,41 @@
 import { useEffect, useState } from 'react';
-import { CONFIG, ORDER } from '../config';
-import { fetchQuote } from '../api/meld';
-import { format } from '../utils/format';
+import { CONFIG } from '../config';
+import { fetchQuotes, type Quote } from '../api/meld';
 
-export interface QuoteState {
-  receiveText: string;
-  quoteNote: string;
-  rateText: string;
+export interface QuotesState {
+  quotes: Quote[];
+  note: string;
   /** Set when the demo can't run at all (e.g. no API key) — surfaced on the checkout screen. */
   configError: string;
 }
 
-// Fetches a live quote on mount, purely for display on the checkout screen.
-export function useQuote(): QuoteState {
-  const [receiveText, setReceiveText] = useState('…');
-  const [quoteNote, setQuoteNote] = useState('fetching live quote…');
-  const [rateText, setRateText] = useState('Credit / debit card rail');
+// Fetches one live quote per headless-capable provider on mount, for the provider picker.
+export function useQuotes(): QuotesState {
+  const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [note, setNote] = useState('fetching live quotes…');
   const [configError, setConfigError] = useState('');
 
   useEffect(() => {
     (async () => {
       if (!CONFIG.apiKey) {
-        setReceiveText('≈ —');
-        setQuoteNote('MELD_API_KEY not set');
+        setNote('MELD_API_KEY not set');
         setConfigError(
           'MELD_API_KEY is empty. Fill .env (see README), then restart Metro with --reset-cache.',
         );
         return;
       }
       try {
-        const q = await fetchQuote();
-        if (q.destinationAmount != null)
-          setReceiveText(`≈ ${format(q.destinationAmount)}`);
-        if (q.totalFee != null)
-          setQuoteNote(
-            `live quote — total fees ${format(q.totalFee)} ${
-              ORDER.sourceCurrencyCode
-            }`,
-          );
-        if (q.exchangeRate != null)
-          setRateText(
-            `1 BTC ≈ ${Math.round(q.exchangeRate).toLocaleString()} ${
-              ORDER.sourceCurrencyCode
-            }`,
-          );
+        const q = await fetchQuotes();
+        setQuotes(q);
+        setNote(
+          `${q.length} provider${q.length === 1 ? '' : 's'}: ` +
+            q.map((x) => x.serviceProvider).join(', '),
+        );
       } catch (e: any) {
-        setReceiveText('≈ —');
-        setQuoteNote(`quote failed: ${e.message}`);
+        setNote(`quote failed: ${e.message}`);
       }
     })();
   }, []);
 
-  return { receiveText, quoteNote, rateText, configError };
+  return { quotes, note, configError };
 }

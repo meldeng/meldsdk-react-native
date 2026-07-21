@@ -10,13 +10,13 @@ export const CONFIG = {
   version: '2026-05-01',
 };
 
-// Fixed corridor, same as the native demo: 15 USD -> BTC, US, Mercuryo card.
+// Fixed corridor, same as the native demos: 15 USD -> USDC, US, Uphold card.
 export const ORDER = {
   sourceAmount: '15',
   sourceCurrencyCode: 'USD',
-  destinationCurrencyCode: 'BTC',
+  destinationCurrencyCode: 'USDC',
   countryCode: 'US',
-  defaultWallet: 'bc1qr74wmrcwqq9w5yxczxj6udts9mnqsh3xlhk5yp',
+  defaultWallet: '0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97',
 };
 
 // The server-held customer id is preferred; show an input only when it isn't set.
