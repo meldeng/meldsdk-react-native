@@ -38,8 +38,14 @@ export function useWidgetEvents(onClose: () => void) {
 
   const handlers: WidgetHandlers = {
     onReady: () => record('onReady'),
-    onPaymentSubmitted: () =>
-      record('onPaymentSubmitted (UX hint, not settled)'),
+    onPaymentSubmitted: () => {
+      record('onPaymentSubmitted (UX hint, not settled)');
+      // demo: the widget's job ends at submit — settlement is confirmed server-side via webhook,
+      // and providers (e.g. Uphold) leave their own "processing" screen up with no further widget
+      // event. So dismiss here rather than stranding the user on it. A real app would now show its
+      // OWN "settling…" UX driven by its backend.
+      finish('payment submitted — settling server-side');
+    },
     onStatusChange: e => {
       setStatus(e.status);
       record(`onStatusChange: ${e.status} (${e.providerStatus ?? '-'})`);
