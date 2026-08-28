@@ -1,17 +1,31 @@
 import React, { useRef } from 'react';
 import { SafeAreaView, View, Text, ScrollView, StyleSheet } from 'react-native';
-import { MeldWidget, type MeldOrder } from '@meldcrypto/react-native-sdk';
+import {
+  MeldWidget,
+  type MeldApplePayRequest,
+  type MeldOrder,
+} from '@meldcrypto/react-native-sdk';
 import { useWidgetEvents } from '../hooks/useWidgetEvents';
 import { StatusBanner } from './StatusBanner';
 
 export interface WidgetScreenProps {
   order: MeldOrder;
+  /**
+   * Present for an Apple Pay order. Pass it whatever the provider — the SDK reads it only if the
+   * surface it picked needs it, so the screen never branches on which provider was routed to.
+   */
+  applePay?: MeldApplePayRequest;
   providerName: string;
   onClose: () => void;
 }
 
 // Mounts <MeldWidget> for a created order and shows a live event log beneath it.
-export function WidgetScreen({ order, providerName, onClose }: WidgetScreenProps) {
+export function WidgetScreen({
+  order,
+  applePay,
+  providerName,
+  onClose,
+}: WidgetScreenProps) {
   const { lines, status, handlers } = useWidgetEvents(onClose);
   const logRef = useRef<ScrollView>(null);
   const title = providerName
@@ -26,7 +40,14 @@ export function WidgetScreen({ order, providerName, onClose }: WidgetScreenProps
         </Text>
         <Text style={styles.widgetTitle}>{title}</Text>
       </View>
-      <MeldWidget style={styles.fill} order={order} {...handlers} />
+      {/* A native Apple Pay order draws nothing here — iOS presents its sheet over this screen —
+          but the component still has to stay mounted for the sheet's lifetime. */}
+      <MeldWidget
+        style={styles.fill}
+        order={order}
+        applePay={applePay}
+        {...handlers}
+      />
       <View style={styles.logPanel}>
         <StatusBanner status={status} />
         <ScrollView

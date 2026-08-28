@@ -4,6 +4,7 @@
 @interface RCT_EXTERN_MODULE(MeldWidgetManager, RCTViewManager)
 
 RCT_EXPORT_VIEW_PROPERTY(order, NSDictionary)
+RCT_EXPORT_VIEW_PROPERTY(applePay, NSDictionary)
 RCT_EXPORT_VIEW_PROPERTY(onReady, RCTDirectEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onPaymentSubmitted, RCTDirectEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onStatusChange, RCTDirectEventBlock)

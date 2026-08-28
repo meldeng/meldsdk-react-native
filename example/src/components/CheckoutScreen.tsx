@@ -9,7 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { ORDER, PRESETS, needsCustomerField } from '../config';
-import { type Quote } from '../api/meld';
+import { type PaymentMethodType, type Quote } from '../api/meld';
 import { format } from '../utils/format';
 
 export interface CheckoutScreenProps {
@@ -23,6 +23,9 @@ export interface CheckoutScreenProps {
   note: string;
   busy: boolean;
   error: string;
+  paymentMethod: PaymentMethodType;
+  onSelectPaymentMethod: (m: PaymentMethodType) => void;
+  applePayAvailable: boolean;
   onBuy: () => void;
 }
 
@@ -39,6 +42,9 @@ export function CheckoutScreen(props: CheckoutScreenProps) {
     note,
     busy,
     error,
+    paymentMethod,
+    onSelectPaymentMethod,
+    applePayAvailable,
     onBuy,
   } = props;
   const buyDisabled = busy || !wallet.trim() || !selectedProvider;
@@ -128,6 +134,34 @@ export function CheckoutScreen(props: CheckoutScreenProps) {
                 : note}
             </Text>
           </View>
+
+          {/* choose a payment method — the same <MeldWidget> renders whichever surface the
+              chosen provider turns out to use for it. */}
+          <Text style={styles.fieldLabel}>Payment method</Text>
+          <View style={styles.methodRow}>
+            {(['CREDIT_DEBIT_CARD', 'APPLE_PAY'] as PaymentMethodType[]).map((m) => {
+              const disabled = m === 'APPLE_PAY' && !applePayAvailable;
+              return (
+                <Text
+                  key={m}
+                  accessibilityRole="button"
+                  onPress={() => !disabled && onSelectPaymentMethod(m)}
+                  style={[
+                    styles.methodPill,
+                    paymentMethod === m && styles.methodPillOn,
+                    disabled && styles.methodPillOff,
+                  ]}
+                >
+                  {m === 'APPLE_PAY' ? ' Pay' : 'Card'}
+                </Text>
+              );
+            })}
+          </View>
+          {!applePayAvailable ? (
+            <Text style={styles.methodHint}>
+              Apple Pay needs a real device with a card in Wallet.
+            </Text>
+          ) : null}
 
           {/* choose a provider */}
           <Text style={styles.fieldLabel}>Choose a provider</Text>
@@ -229,6 +263,21 @@ export function CheckoutScreen(props: CheckoutScreenProps) {
 }
 
 const styles = StyleSheet.create({
+  // payment-method toggle
+  methodRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
+  methodPill: {
+    flex: 1,
+    textAlign: 'center',
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d8d8d8',
+    color: '#111',
+    overflow: 'hidden',
+  },
+  methodPillOn: { borderColor: '#111', fontWeight: '600' },
+  methodPillOff: { opacity: 0.4 },
+  methodHint: { fontSize: 12, color: '#777', marginBottom: 10 },
   flex1: { flex: 1 },
 
   // page + card

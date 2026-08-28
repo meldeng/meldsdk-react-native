@@ -11,7 +11,19 @@ final class MeldModule: NSObject {
     @objc static func requiresMainQueueSetup() -> Bool { true }
 
     @objc func configure(_ environment: NSString) {
-        Meld.configure(environment: environment == "production" ? .production : .sandbox)
+        // Parsed by raw value rather than a "production or else sandbox" test: silently collapsing
+        // an unrecognised environment to sandbox is how a QA build ends up posting to the sandbox
+        // API and never finding its order.
+        let parsed = MeldEnvironment(rawValue: environment as String) ?? .sandbox
+        Meld.configure(environment: parsed)
+    }
+
+    /// Whether this device and user can pay with Apple Pay right now — a provisioned card and no
+    /// restriction. Check before offering the option; `canMakePayments()` alone would be true on a
+    /// device with an empty Wallet.
+    @objc func canPresentApplePay(_ resolve: @escaping RCTPromiseResolveBlock,
+                                  rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(Meld.canPresentApplePay())
     }
 
     /// Inspect an order before rendering the widget — bridges to `Meld.capabilities(for:)`.

@@ -1,6 +1,18 @@
-import { type MeldOrder } from '@meldcrypto/react-native-sdk';
+import {
+  type MeldApplePayRequest,
+  type MeldOrder,
+} from '@meldcrypto/react-native-sdk';
 import { CONFIG, ORDER } from '../config';
 import { uuidv4 } from '../utils/uuid';
+
+/** The two surfaces this demo can drive. Both go through the same `<MeldWidget>`. */
+export type PaymentMethodType = 'CREDIT_DEBIT_CARD' | 'APPLE_PAY';
+
+/** An order plus, for Apple Pay, what the sheet needs beyond it. */
+export interface CreatedOrder {
+  order: MeldOrder;
+  applePay?: MeldApplePayRequest;
+}
 
 export interface Quote {
   serviceProvider: string;
@@ -35,13 +47,15 @@ function post(path: string, body: object): Promise<Response> {
 
 // One quote per headless-capable provider for the corridor (no `serviceProviders` filter), so the
 // user can pick which provider to use — same as the iOS/Android/web demos.
-export async function fetchQuotes(): Promise<Quote[]> {
+export async function fetchQuotes(
+  paymentMethodType: PaymentMethodType = 'CREDIT_DEBIT_CARD',
+): Promise<Quote[]> {
   const body: Record<string, unknown> = {
     countryCode: ORDER.countryCode,
     sourceAmount: ORDER.sourceAmount,
     sourceCurrencyCode: ORDER.sourceCurrencyCode,
     destinationCurrencyCode: ORDER.destinationCurrencyCode,
-    paymentMethodType: 'CREDIT_DEBIT_CARD',
+    paymentMethodType,
   };
   // Providers that quote on-behalf-of a customer (e.g. Uphold) require the customer id on the quote
   // itself, so the provider can resolve that customer's service-provider identity.
@@ -63,23 +77,42 @@ export async function createOrder(
   serviceProvider: string,
   customerId: string,
   wallet: string,
-): Promise<MeldOrder> {
+  paymentMethodType: PaymentMethodType = 'CREDIT_DEBIT_CARD',
+): Promise<CreatedOrder> {
+  // The SAME device IP has to reach order creation and the Apple Pay sheet — providers bind the
+  // transaction to it — so it is resolved once here and handed back with the order.
+  const clientIpAddress = await publicIP();
   const res = await post('/crypto/order/headless/onramp', {
     customerId,
     externalOrderId: `rn-demo-${Date.now()}`,
     serviceProvider,
-    paymentMethodType: 'CREDIT_DEBIT_CARD',
+    paymentMethodType,
     sourceCurrencyCode: ORDER.sourceCurrencyCode,
     sourceAmount: ORDER.sourceAmount,
     destinationCurrencyCode: ORDER.destinationCurrencyCode,
     destinationWalletAddress: wallet,
     countryCode: ORDER.countryCode,
-    clientIpAddress: await publicIP(),
+    clientIpAddress,
   });
   const json = await res.json();
   if (!res.ok)
     throw new Error(
       `${json.code ?? res.status} — ${json.message ?? 'order creation failed'}`,
     );
-  return json;
+
+  // Apple Pay orders need a few inputs the order itself doesn't carry. Build it for every Apple
+  // Pay order regardless of provider: the SDK ignores it for a provider-hosted surface, so the
+  // caller never has to know which shape it got.
+  const applePay: MeldApplePayRequest | undefined =
+    paymentMethodType === 'APPLE_PAY'
+      ? {
+          amount: ORDER.sourceAmount,
+          currencyCode: ORDER.sourceCurrencyCode,
+          walletAddress: wallet,
+          clientIpAddress: clientIpAddress ?? '',
+          summaryItemLabel: `Meld demo — Buy ${ORDER.destinationCurrencyCode}`,
+        }
+      : undefined;
+
+  return { order: json, applePay };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CONFIG } from '../config';
-import { fetchQuotes, type Quote } from '../api/meld';
+import { fetchQuotes, type PaymentMethodType, type Quote } from '../api/meld';
 
 export interface QuotesState {
   quotes: Quote[];
@@ -9,8 +9,12 @@ export interface QuotesState {
   configError: string;
 }
 
-// Fetches one live quote per headless-capable provider on mount, for the provider picker.
-export function useQuotes(): QuotesState {
+// Fetches one live quote per headless-capable provider for the chosen payment method — the
+// providers that can serve a card order are not the same set that can serve Apple Pay, so this
+// re-runs when the method changes.
+export function useQuotes(
+  paymentMethodType: PaymentMethodType = 'CREDIT_DEBIT_CARD',
+): QuotesState {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [note, setNote] = useState('fetching live quotes…');
   const [configError, setConfigError] = useState('');
@@ -25,7 +29,7 @@ export function useQuotes(): QuotesState {
         return;
       }
       try {
-        const q = await fetchQuotes();
+        const q = await fetchQuotes(paymentMethodType);
         setQuotes(q);
         setNote(
           `${q.length} provider${q.length === 1 ? '' : 's'}: ` +
@@ -35,7 +39,7 @@ export function useQuotes(): QuotesState {
         setNote(`quote failed: ${e.message}`);
       }
     })();
-  }, []);
+  }, [paymentMethodType]);
 
   return { quotes, note, configError };
 }
