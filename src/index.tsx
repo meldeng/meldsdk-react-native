@@ -50,8 +50,21 @@ export const Meld = {
    */
   isNativeModuleAvailable: Platform.OS === 'ios' && NativeModules.MeldModule != null,
 
-  /** One-time setup. Mirrors `Meld.configure(environment:)` on native. */
+  /**
+   * One-time setup. Mirrors `Meld.configure(environment:)` on native.
+   *
+   * NOTE: `'qa'` is honoured on iOS only. The Android SDK's environment enum has just
+   * sandbox/production, so it resolves `'qa'` to sandbox — which would point an Android card
+   * widget at the wrong host for a QA order. Warned rather than silently accepted; remove this
+   * once the Android SDK carries a QA case.
+   */
   configure(environment: MeldEnvironment): void {
+    if (environment === 'qa' && Platform.OS !== 'ios') {
+      console.warn(
+        "[MeldSDK] configure('qa') is iOS-only; this platform will use sandbox. " +
+          'Orders created in QA will not resolve here.',
+      );
+    }
     NativeModules.MeldModule.configure(environment);
   },
 
