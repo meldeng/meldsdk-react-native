@@ -1,6 +1,6 @@
 {
   "name": "@meldcrypto/react-native-sdk",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "React Native wrapper for the Meld SDK (iOS + Android) \u2014 embed a crypto on/off-ramp provider widget (Mercuryo card).",
   "source": "src/index.tsx",
   "main": "src/index.tsx",
