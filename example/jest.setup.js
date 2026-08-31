@@ -8,6 +8,10 @@ NativeModules.MeldModule = {
   capabilities: jest.fn(() =>
     Promise.resolve({ embeddable: true, surface: 'native', requiresUserGesture: false }),
   ),
+  // Jest's RN preset reports Platform.OS as 'ios', so Meld.canPresentApplePay() gets past its
+  // platform guard and calls straight through to the native module. Every method the app touches
+  // has to be stubbed here or the call is a TypeError, not a false.
+  canPresentApplePay: jest.fn(() => Promise.resolve(true)),
 };
 
 // Keep the test hermetic: never hit the real Meld API (the on-mount quote fetch would

@@ -1,36 +1,140 @@
 name: CI
 
+# CI used to install @meldcrypto/react-native-sdk from npm into the example and build that, which
+# meant it validated the LAST RELEASE and never the working tree — a PR could rewrite src/index.tsx
+# or the Swift bridge and go green without any of it being compiled. Every job below now runs
+# against a tarball packed from this checkout.
+#
+# Packing (rather than symlinking) is deliberate: `npm pack` honours the "files" allowlist, so
+# dropping a file from the published package fails CI here instead of at a consumer's install.
+
 on:
   push:
     branches: [ main ]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  android:
+  typecheck:
+    name: Typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-node@v4
         with:
-          distribution: temurin
-          java-version: '17'
+          node-version: '22'
+      - run: npm install
+      - run: npm run typecheck
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+  example:
+    name: Example tests & lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # Smoke-test the published packages: the example pulls @meldcrypto/react-native-sdk from npm
-      # and the native io.meld:meldsdk from Maven Central.
-      - name: Install JS deps
-        run: npm install
+      - name: Pack this checkout
+        id: pack
+        run: echo "tgz=$PWD/$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Install example against it
+        working-directory: example
+        run: |
+          npm install
+          npm install "${{ steps.pack.outputs.tgz }}"
+
+      - run: npm test
+        working-directory: example
+      - run: npm run lint
         working-directory: example
 
-      - name: Build example Android app
-        run: ./gradlew :app:assembleDebug
+  android:
+    name: Build example (Android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pack this checkout
+        id: pack
+        run: echo "tgz=$PWD/$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Install example against it
+        working-directory: example
+        run: |
+          npm install
+          npm install "${{ steps.pack.outputs.tgz }}"
+
+      - name: assembleDebug
         working-directory: example/android
+        run: ./gradlew :app:assembleDebug
+
+  ios:
+    name: Build example (iOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pack this checkout
+        id: pack
+        run: echo "tgz=$PWD/$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Install example against it
+        working-directory: example
+        run: |
+          npm install
+          npm install "${{ steps.pack.outputs.tgz }}"
+
+      # Resolves MeldSDK from CocoaPods trunk, so this also catches the podspec's iOS-SDK floor
+      # drifting away from the API the bridge actually calls.
+      - name: pod install
+        working-directory: example/ios
+        run: pod install --repo-update
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available --json \
+            | python3 -c "import json,sys; ds=json.load(sys.stdin)['devices']; print(next(d['udid'] for rt in sorted(ds) if 'iOS' in rt for d in ds[rt] if d.get('isAvailable') and 'iPhone' in d['name']))")
+          [ -n "$udid" ] || { echo "::error::no iPhone simulator on this runner"; exit 1; }
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        working-directory: example/ios
+        run: |
+          # Not -e: the exit status has to survive so the failure excerpt below is printed.
+          set +e
+          xcodebuild build \
+            -workspace MeldRNDemo.xcworkspace \
+            -scheme MeldRNDemo \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            > xcodebuild.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::group::failures"; grep -E "error:|\*\* BUILD FAILED" xcodebuild.log | head -50; echo "::endgroup::"
+          fi
+          exit $status
+
+      - name: Upload log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-log
+          path: example/ios/xcodebuild.log
+          retention-days: 7

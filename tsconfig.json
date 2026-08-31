@@ -1,0 +1,11 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    // The shared RN config pulls in jest types for app code. This package ships no tests, and
+    // jest is not a dependency here, so asking for them just fails to resolve.
+    "types": []
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}
