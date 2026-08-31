@@ -14,8 +14,25 @@ final class MeldWidgetView: UIView {
     @objc var onCancel: RCTDirectEventBlock?
     @objc var onError: RCTDirectEventBlock?
 
-    // The order JSON from JS. Mount once it arrives.
-    @objc var order: NSDictionary? { didSet { mountIfNeeded() } }
+    // The order JSON from JS.
+    @objc var order: NSDictionary?
+
+    // Inputs a native Apple Pay sheet needs beyond what the order carries. Only read for an order
+    // whose presentation is the encrypted-token shape; ignored for every other surface, which is
+    // why one component can host all of them.
+    @objc var applePay: NSDictionary?
+
+    /// Mount once React Native has finished applying a batch of props, NOT from an individual
+    /// property observer.
+    ///
+    /// Prop application order within a batch is not guaranteed, so mounting from `order.didSet`
+    /// would race every other prop: an Apple Pay order could mount before `applePay` arrived and
+    /// fail for a missing request, and an order applied before the handler blocks would dispatch
+    /// its first events into nil. Waiting for the batch to settle removes both.
+    override func didSetProps(_ changedProps: [String]) {
+        super.didSetProps(changedProps)
+        mountIfNeeded()
+    }
 
     private func mountIfNeeded() {
         guard handle == nil, let order else { return }
@@ -35,7 +52,7 @@ final class MeldWidgetView: UIView {
             // [weak self]: WebKit retains the script handler (and thus the session) for the
             // WebView's lifetime; capturing self strongly here would form a retain cycle that
             // only breaks at removeFromSuperview -> unmount.
-            handle = try Meld.mount(parsed, into: self, handlers: MeldEventHandlers(
+            handle = try Meld.mount(parsed, into: self, applePay: applePayRequest(), handlers: MeldEventHandlers(
                 onReady: { [weak self] id in self?.onReady?(["orderId": id ?? ""]) },
                 onPaymentSubmitted: { [weak self] id in self?.onPaymentSubmitted?(["orderId": id ?? ""]) },
                 onStatusChange: { [weak self] e in
@@ -56,6 +73,29 @@ final class MeldWidgetView: UIView {
             // Mount failures (unsupported order, missing widget URL) also went silent under `try?`.
             emitError(code: "MOUNT_FAILED", message: error.localizedDescription)
         }
+    }
+
+    /// Builds the Apple Pay request from the JS prop, or nil when the prop is absent — which is the
+    /// normal case for every non-Apple-Pay surface. Missing required fields yield nil rather than a
+    /// half-built request, so the SDK reports the order-level problem instead of the sheet failing
+    /// with a zero amount.
+    private func applePayRequest() -> MeldApplePayRequest? {
+        guard let applePay,
+              // An explicit closure, not `Decimal.init(string:)` as a function reference: Decimal has
+              // several generic `init` overloads and the reference is ambiguous.
+              let amount = (applePay["amount"] as? String).flatMap({ Decimal(string: $0) }),
+              let currencyCode = applePay["currencyCode"] as? String,
+              let walletAddress = applePay["walletAddress"] as? String,
+              let clientIpAddress = applePay["clientIpAddress"] as? String
+        else { return nil }
+
+        return MeldApplePayRequest(
+            amount: amount,
+            currencyCode: currencyCode,
+            walletAddress: walletAddress,
+            clientIpAddress: clientIpAddress,
+            email: applePay["email"] as? String,
+            summaryItemLabel: (applePay["summaryItemLabel"] as? String) ?? "Crypto purchase")
     }
 
     /// Forwards a native `MeldError` to JS, including `detail` for parity with the native struct.

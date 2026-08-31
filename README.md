@@ -58,6 +58,54 @@ Meld.configure('sandbox'); // or 'production'
 Optionally guard before rendering: `if ((await Meld.capabilities(order)).embeddable) { … }`
 (async on RN since it crosses the native bridge).
 
+### Apple Pay
+
+The same component, plus an `applePay` prop carrying what the order doesn't:
+
+```tsx
+if (await Meld.canPresentApplePay()) {                 // a card in Wallet, not just a capable device
+  <MeldWidget
+    order={order}                                       // paymentMethodType: 'APPLE_PAY'
+    applePay={{
+      amount: '15.00',                                  // must match the order
+      currencyCode: 'EUR',
+      walletAddress: 'bc1q…',
+      clientIpAddress: deviceIp,                        // the SAME IP the order was created with
+      summaryItemLabel: 'Acme — Buy BTC',
+    }}
+    onPaymentSubmitted={() => showProcessing()}
+    onCancel={() => backToCheckout()}
+    onError={(e) => showError(e.message)}
+  />
+}
+```
+
+Pass `applePay` for **any** `APPLE_PAY` order without checking which provider it routed to. Some
+providers hand back a token the SDK presents through PassKit as a native sheet; others host the
+sheet on their own page, which the SDK renders into this component. The prop is read only by the
+surfaces that need it, and choosing between them is the SDK's job — that is the point of one
+component.
+
+A native sheet is modal, so nothing draws in the view while it is up. Keep the component mounted
+anyway: unmounting tears the surface down.
+
+**iOS setup.** A native sheet needs the Apple Pay entitlement in *your* app. For Expo, add the
+config plugin — the merchant id is yours, and must be paired with a Payment Processing certificate
+issued from the CSR your Meld representative provides:
+
+```json
+"plugins": [
+  ["@meldcrypto/react-native-sdk/plugin", { "merchantId": "merchant.com.yourcompany.app" }]
+]
+```
+
+Bare React Native projects add the same entitlement in Xcode. No setup is needed for
+provider-hosted Apple Pay — that runs under the provider's merchant id on their own domain.
+
+> The iOS **Simulator** presents the sheet and can authorize it (Features ▸ Face ID ▸ Matching
+> Face), which is enough to exercise mounting, events and the cancel path. It cannot produce a
+> decryptable payment token, so completing a real payment needs a device.
+
 ## Events
 
 | Event | Fires when | Do |

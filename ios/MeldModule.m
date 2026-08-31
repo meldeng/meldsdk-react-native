@@ -7,5 +7,7 @@ RCT_EXTERN_METHOD(configure:(NSString *)environment)
 RCT_EXTERN_METHOD(capabilities:(NSDictionary *)order
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(canPresentApplePay:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 
 @end

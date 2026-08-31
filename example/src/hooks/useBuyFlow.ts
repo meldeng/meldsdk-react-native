@@ -1,16 +1,20 @@
 import { useCallback, useState } from 'react';
-import { type MeldOrder } from '@meldcrypto/react-native-sdk';
-import { createOrder } from '../api/meld';
+import { createOrder, type CreatedOrder, type PaymentMethodType } from '../api/meld';
 
 // Owns the created order plus the create-order request state (busy/error). When `order` is set,
 // the app shows the widget screen; `closeOrder` returns to checkout.
 export function useBuyFlow() {
-  const [order, setOrder] = useState<MeldOrder | null>(null);
+  const [created, setCreated] = useState<CreatedOrder | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const buy = useCallback(
-    async (provider: string, customer: string, wallet: string) => {
+    async (
+      provider: string,
+      customer: string,
+      wallet: string,
+      paymentMethodType: PaymentMethodType,
+    ) => {
       setError('');
       setBusy(true);
       try {
@@ -22,8 +26,7 @@ export function useBuyFlow() {
           setError('Set a Meld customer ID.');
           return;
         }
-        const created = await createOrder(provider, customer, wallet);
-        setOrder(created);
+        setCreated(await createOrder(provider, customer, wallet, paymentMethodType));
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -33,7 +36,14 @@ export function useBuyFlow() {
     [],
   );
 
-  const closeOrder = useCallback(() => setOrder(null), []);
+  const closeOrder = useCallback(() => setCreated(null), []);
 
-  return { order, busy, error, buy, closeOrder };
+  return {
+    order: created?.order ?? null,
+    applePay: created?.applePay,
+    busy,
+    error,
+    buy,
+    closeOrder,
+  };
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Meld } from '@meldcrypto/react-native-sdk';
+import { type PaymentMethodType } from './src/api/meld';
 import { CONFIG, ORDER, needsCustomerField } from './src/config';
 import { useQuotes } from './src/hooks/useQuote';
 import { useBuyFlow } from './src/hooks/useBuyFlow';
@@ -11,8 +12,24 @@ Meld.configure('sandbox'); // or 'production'
 // Thin orchestrator: holds the checkout inputs + selected provider and switches between the
 // checkout and widget screens. Everything else lives in src/{api,hooks,components,utils}.
 export default function App() {
-  const { quotes, note, configError } = useQuotes();
-  const { order, busy, error: buyError, buy, closeOrder } = useBuyFlow();
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('CREDIT_DEBIT_CARD');
+  const [applePayAvailable, setApplePayAvailable] = useState(false);
+  const { quotes, note, configError } = useQuotes(paymentMethod);
+  const { order, applePay, busy, error: buyError, buy, closeOrder } = useBuyFlow();
+
+  // Ask the SDK whether this device/user can pay before offering the option, rather than showing
+  // a button that could never open a sheet.
+  useEffect(() => {
+    let cancelled = false;
+    Meld.canPresentApplePay().then((ok) => {
+      if (cancelled) return;
+      setApplePayAvailable(ok);
+      if (!ok) setPaymentMethod('CREDIT_DEBIT_CARD');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [wallet, setWallet] = useState(ORDER.defaultWallet);
   const [customerId, setCustomerId] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
@@ -30,6 +47,7 @@ export default function App() {
     return (
       <WidgetScreen
         order={order}
+        applePay={applePay}
         providerName={selectedProvider ?? ''}
         onClose={closeOrder}
       />
@@ -48,11 +66,15 @@ export default function App() {
       note={note}
       busy={busy}
       error={buyError || configError}
+      paymentMethod={paymentMethod}
+      onSelectPaymentMethod={setPaymentMethod}
+      applePayAvailable={applePayAvailable}
       onBuy={() =>
         buy(
           selectedProvider ?? '',
           needsCustomerField ? customerId.trim() : CONFIG.customerId,
           wallet.trim(),
+          paymentMethod,
         )
       }
     />
