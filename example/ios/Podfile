@@ -19,7 +19,7 @@ target 'MeldRNDemo' do
 
   # The native Meld iOS SDK (the wrapper's MeldReactNative.podspec depends on it), resolved by
   # name from CocoaPods trunk.
-  pod 'MeldSDK', '~> 0.4'
+  pod 'MeldSDK', '~> 0.5'
 
   use_react_native!(
     :path => config[:reactNativePath],
