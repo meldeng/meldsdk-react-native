@@ -95,9 +95,25 @@ issued from the CSR your Meld representative provides:
 
 ```json
 "plugins": [
-  ["@meldcrypto/react-native-sdk/plugin", { "merchantId": "merchant.com.yourcompany.app" }]
+  ["@meldcrypto/react-native-sdk/plugin", { "merchantIds": ["merchant.com.yourcompany.app"] }]
 ]
 ```
+
+**One id per provider.** An Apple merchant id's tokens are encrypted for exactly one Payment
+Processing Certificate, so an app offering native Apple Pay through two providers with different
+processors needs an id for each — which is why this is a list:
+
+```json
+"plugins": [
+  ["@meldcrypto/react-native-sdk/plugin", { "merchantIds": [
+    "merchant.com.yourcompany.app",
+    "merchant.com.yourcompany.app.otherprovider"
+  ]}]
+]
+```
+
+The singular `merchantId` is still accepted, so existing config keeps working; passing both merges
+them.
 
 Bare React Native projects add the same entitlement in Xcode. No setup is needed for
 provider-hosted Apple Pay — that runs under the provider's merchant id on their own domain.
