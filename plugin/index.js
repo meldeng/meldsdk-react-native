@@ -45,17 +45,41 @@ const { withEntitlementsPlist } = loadConfigPlugins();
  *
  * Only needed for providers whose Apple Pay is presented natively. A provider-hosted surface runs
  * on the provider's own registered domain under their merchant id, and needs none of this.
+ *
+ * Pass one id per provider whose Apple Pay you present natively:
+ *
+ *     ["@meldcrypto/react-native-sdk/plugin", { "merchantIds": [
+ *       "merchant.com.yourcompany.app",
+ *       "merchant.com.yourcompany.app.otherprovider"
+ *     ]}]
  */
 const withMeldApplePay = (config, props = {}) => {
-  const merchantId = props.merchantId;
-  if (!merchantId) {
+  // `merchantIds` (plural) because one app can need several. An Apple merchant id's tokens are
+  // encrypted for exactly one Payment Processing Certificate, so an app offering native Apple Pay
+  // through two providers with different processors needs one id per provider — the entitlement is
+  // an array for precisely this reason. `merchantId` stays accepted so existing config keeps
+  // working; passing both is fine and they are merged.
+  const ids = [
+    ...(Array.isArray(props.merchantIds) ? props.merchantIds : []),
+    ...(props.merchantId ? [props.merchantId] : []),
+  ]
+    .map((id) => (typeof id === 'string' ? id.trim() : ''))
+    .filter(Boolean);
+  const merchantIds = [...new Set(ids)];
+
+  if (merchantIds.length === 0) {
     throw new Error(
-      '@meldcrypto/react-native-sdk/plugin requires a { merchantId } ' +
+      '@meldcrypto/react-native-sdk/plugin requires { merchantIds: [...] } or { merchantId } ' +
         '(e.g. "merchant.com.yourcompany.app").',
     );
   }
   return withEntitlementsPlist(config, (cfg) => {
-    cfg.modResults['com.apple.developer.in-app-payments'] = [merchantId];
+    // Merge rather than replace: another plugin may already have contributed an id, and dropping
+    // it would silently disable that provider's sheet at runtime with no build-time signal.
+    const existing = cfg.modResults['com.apple.developer.in-app-payments'];
+    cfg.modResults['com.apple.developer.in-app-payments'] = [
+      ...new Set([...(Array.isArray(existing) ? existing : []), ...merchantIds]),
+    ];
     return cfg;
   });
 };
