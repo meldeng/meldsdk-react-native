@@ -15,5 +15,9 @@ Pod::Spec.new do |s|
 
   # The React Native host, and the native Meld SDK this wraps (kept in lockstep).
   s.dependency 'React-Core'
-  s.dependency 'MeldSDK', '~> 0.5'
+  # 0.6 is the floor, not just the family: the Banxa adapter this version can be asked to
+  # present lands in MeldSDK 0.6.0. Left at '~> 0.5', a consumer holding a Podfile.lock
+  # pinned to 0.5.x would resolve happily and then fail at runtime with no adapter for a
+  # Banxa order, instead of failing to resolve with a reason.
+  s.dependency 'MeldSDK', '~> 0.6'
 end
