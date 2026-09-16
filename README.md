@@ -127,10 +127,16 @@ provider-hosted Apple Pay — that runs under the provider's merchant id on thei
 | Event | Fires when | Do |
 |---|---|---|
 | `onReady` | Widget document loaded | Hide spinner |
-| `onPaymentSubmitted` | User finished the provider payment flow (UX hint only) | Show "processing" |
+| `onPaymentSubmitted` | User finished the provider payment flow — **exactly once per mount** (UX hint only) | Unmount, show "processing" |
 | `onStatusChange` | Order status changed; `e.status` is `pending` \| `completed` \| `failed` \| `cancelled` | React to status; `completed` = provider "order complete" (still not settlement) |
 | `onCancel` | User cancelled | Show retry CTA |
 | `onError` | Load failure, bad order, or terminal `failed` status | Show error; `e.recoverable` says retry vs. new order |
+
+`onPaymentSubmitted` fires once and only once, however the provider signals it. Some send a
+"payment finished" message and never a status; some report `completed` and never a finished
+message; some send both, in either order. The native SDK collapses that into a single callback,
+so you do not need a `settledOnce` guard of your own. A terminal `failed`/`cancelled` status, a
+cancel, or a non-recoverable error closes it, so a failure is never followed by a submission.
 
 `status` is normalized across providers — code against it, not the raw provider string (in
 `e.providerStatus`). A terminal `failed` also fires `onError`, and a `cancelled` also fires
@@ -140,7 +146,7 @@ provider-hosted Apple Pay — that runs under the provider's merchant id on thei
 
 Neither `onPaymentSubmitted` nor `onStatusChange` with `status === 'completed'` is settlement —
 both are client-side UX signals. Mark the order paid only when your backend receives Meld's
-`TRANSACTION_STATUS_CHANGED` webhook. Show "processing", not "success", until then.
+`TRANSACTION_CRYPTO_COMPLETE` webhook. Show "processing", not "success", until then.
 
 ## Example app
 
