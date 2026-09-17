@@ -147,6 +147,11 @@ export interface MeldWidgetProps {
    */
   applePay?: MeldApplePayRequest;
   onReady?: (orderId?: string) => void;
+  /**
+   * The customer finished paying. A UX hint, never settlement — unmount and show a processing
+   * state. Fires exactly once per mount, whether the provider reports it as its own "payment
+   * finished" message or as a `completed` status, so no de-duplication is needed.
+   */
   onPaymentSubmitted?: (orderId?: string) => void;
   onStatusChange?: (e: MeldStatusChange) => void;
   onCancel?: (orderId?: string) => void;

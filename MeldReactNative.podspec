@@ -19,5 +19,5 @@ Pod::Spec.new do |s|
   # present lands in MeldSDK 0.6.0. Left at '~> 0.5', a consumer holding a Podfile.lock
   # pinned to 0.5.x would resolve happily and then fail at runtime with no adapter for a
   # Banxa order, instead of failing to resolve with a reason.
-  s.dependency 'MeldSDK', '~> 0.6'
+  s.dependency 'MeldSDK', '~> 0.7'
 end
