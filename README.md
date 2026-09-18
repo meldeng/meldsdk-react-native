@@ -23,17 +23,17 @@ to add to your `Podfile`. Just install with **static frameworks** (`MeldSDK` is 
 cd ios && USE_FRAMEWORKS=static pod install
 ```
 
-This branch requires the coordinated **MeldSDK 0.8** release for protocol dispatch, shared payment
-actions and native Stripe execution. It is not compatible with a Podfile lock retaining 0.7.
-Until 0.8 is published, test the example against its coordinated native checkout:
+This release requires **MeldSDK 0.8** for protocol dispatch, shared payment actions and native Stripe
+execution. A Podfile.lock that still pins 0.7 must be updated (`pod update MeldSDK`). To test the
+example against a local native checkout instead of the published pod:
 
 ```bash
 cd example/ios
 MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.8.0 USE_FRAMEWORKS=static pod install
 ```
 
-The normal CI/release path resolves the published pod; it must wait for that release. This local
-override compiles the actual new SDK and does not bypass the minimum dependency requirement.
+The override compiles the native SDK from source and does not relax the minimum dependency; CI and
+releases resolve the published pod.
 
 ### Android
 
@@ -76,6 +76,26 @@ Declared protocols also require a compatible installed native bridge. On an olde
 an OTA JavaScript update), capabilities report `unsupported` and the component emits
 `UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. A new iOS app build is required. Android
 currently supports legacy orders only; declared orders remain unsupported there.
+
+### Check a quote before creating an order
+
+```tsx
+const presentation = quote.headlessPresentation;
+if (!presentation) return; // Select an explicitly supported alternative; never infer from provider name.
+const caps = await Meld.presentationCapabilities(quote.paymentMethodType, presentation);
+if (caps.surface === 'unsupported') return;
+```
+
+The check consults the running native app's adapter registry with the exact payment method,
+surface, protocol and version. It makes no provider request and needs no order or credentials.
+An older bridge without this method (and Android today) returns `unsupported`, including when
+new JavaScript arrives through an OTA update. Unknown or malformed declarations also fail closed.
+
+This is advisory SDK support. Continue checking server requirements, route eligibility and device
+Apple Pay readiness, then call `Meld.capabilities(order)` on the complete create response before
+mounting. Preflight does not authorize an order, satisfy legal requirements or guarantee a payable
+order. `embeddable: false` is valid for a supported native sheet. This API requires MeldSDK 0.8
+or later.
 
 ### Apple Pay
 
