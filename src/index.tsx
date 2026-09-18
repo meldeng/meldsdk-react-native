@@ -1,6 +1,8 @@
 import React from 'react';
 import { requireNativeComponent, NativeModules, Platform, type ViewStyle } from 'react-native';
-import { canMountOrder, inspectCapabilities } from './nativeSupport';
+import { canMountOrder, inspectCapabilities, inspectPresentationCapabilities, type MeldHeadlessPresentation } from './nativeSupport';
+
+export type { MeldHeadlessPresentation } from './nativeSupport';
 
 export type MeldEnvironment = 'sandbox' | 'qa' | 'production';
 export type MeldStatus = 'pending' | 'completed' | 'failed' | 'cancelled';
@@ -76,6 +78,16 @@ export const Meld = {
    */
   capabilities(order: MeldOrder): Promise<MeldCapabilities> {
     return inspectCapabilities(order, NativeModules.MeldModule);
+  },
+
+  /**
+   * Advisory support for a quote or payment method's declared presentation before creating an
+   * order. The installed native adapter registry owns support, including on OTA-updated apps.
+   * Missing bridge support returns `unsupported`. Still check eligibility, device readiness and
+   * legal requirements, then call `capabilities(order)` with the actual order before mounting it.
+   */
+  presentationCapabilities(paymentMethodType: string, presentation: MeldHeadlessPresentation): Promise<MeldCapabilities> {
+    return inspectPresentationCapabilities(paymentMethodType, presentation, NativeModules.MeldModule);
   },
 
   /**
