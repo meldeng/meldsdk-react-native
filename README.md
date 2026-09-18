@@ -180,7 +180,7 @@ provider-hosted Apple Pay — that runs under the provider's merchant id on thei
 | `onPaymentSubmitted` | User finished the provider payment flow — **exactly once per mount** (UX hint only) | Unmount, show "processing" |
 | `onStatusChange` | Order status changed; `e.status` is `pending` \| `completed` \| `failed` \| `cancelled` | React to status; `completed` = provider "order complete" (still not settlement) |
 | `onCancel` | User cancelled | Show retry CTA |
-| `onError` | Load failure, bad order, or terminal `failed` status | Show error; `e.recoverable` says retry vs. new order |
+| `onError` | Load failure, bad order, or terminal `failed` status | Show the safe message and follow `e.headlessError` when present; false `recoverable` does not authorize a new order |
 
 `onPaymentSubmitted` fires once and only once, however the provider signals it. Some send a
 "payment finished" message and never a status; some report `completed` and never a finished
@@ -191,6 +191,35 @@ cancel, or a non-recoverable error closes it, so a failure is never followed by 
 `status` is normalized across providers — code against it, not the raw provider string (in
 `e.providerStatus`). A terminal `failed` also fires `onError`, and a `cancelled` also fires
 `onCancel`. Every callback also receives the `orderId`.
+
+### Shared action recovery
+
+The coordinated iOS 0.8 stack adds optional `MeldError.headlessError` to `onError`:
+
+```ts
+{version: 1, category: 'AUTHENTICATION_REQUIRED', recovery: 'AUTHENTICATE', automaticRetryAllowed: false}
+```
+
+The native SDK validates known category/recovery pairs and permits `RETRY_READ` only for explicit
+read operations. The wrapper projects only these four fields. This advice is absent on older
+binaries and legacy surfaces; unknown versions or malformed advice are omitted. Treat absence as
+uncertain and inspect the existing order through your backend. Never infer dispatch safety from
+the legacy `code`, HTTP status or `recoverable` flag.
+
+| Recovery | Caller action |
+|---|---|
+| `AUTHENTICATE` | Restore the relevant Meld authorization through your backend before further actions |
+| `READ_REQUIREMENTS` | Read current requirements; retain the original order and attempt during remediation |
+| `READ_STATE` | Read the existing order or operation state through your backend |
+| `RETRY_READ` | Offer an explicit retry of the failed read |
+| `CORRECT_REQUEST` | Correct the request without assuming an earlier payment was never dispatched |
+| `STOP` | Stop this flow and retain the order for support or status review |
+
+`automaticRetryAllowed` is always false. The SDK does not automatically resend failed payment or
+legal writes. Wallet uncertainty may trigger one state read; auth, correction, requirements and
+STOP advice is delivered directly. `recoverable: false` closes the mounted flow and never means a
+new charge is safe. Do not automatically remount, clear a retained attempt or create a replacement
+order from any of these callbacks. A new native build is required to receive this metadata.
 
 ## Settlement — webhook, never the SDK
 

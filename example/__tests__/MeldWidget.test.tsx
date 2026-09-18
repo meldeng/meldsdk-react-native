@@ -60,3 +60,25 @@ test('a compatible binary receives the opaque order and forwards normalized even
   expect(onStatusChange).toHaveBeenCalledWith(status);
   await act(async () => rendered.unmount());
 });
+
+test('shared advice survives the actual component callback without extra metadata', async () => {
+  NativeModules.MeldModule.headlessProtocolVersion = 1;
+  const onError = jest.fn();
+  let rendered!: ReactTestRenderer.ReactTestRenderer;
+  await act(async () => {
+    rendered = ReactTestRenderer.create(<MeldWidget order={order} onError={onError} />);
+  });
+  const native = rendered.root.find(node => node.type === 'MockMeldWidget');
+  const headlessError = {
+    version: 1, category: 'AUTHENTICATION_REQUIRED', recovery: 'AUTHENTICATE', automaticRetryAllowed: false,
+  };
+  const error = {orderId: order.id, code: 'PAYMENT_STATE_UNAVAILABLE', message: 'Review the existing order.', recoverable: false};
+  native.props.onError({nativeEvent: {...error, headlessError: {...headlessError, secret: 'synthetic-private'}}});
+  expect(onError).toHaveBeenLastCalledWith({...error, headlessError});
+  native.props.onError({nativeEvent: {...error, headlessError: {...headlessError, version: 2}}});
+  expect(onError).toHaveBeenLastCalledWith({...error, headlessError: undefined});
+  native.props.onError({nativeEvent: error});
+  expect(onError).toHaveBeenLastCalledWith({...error, headlessError: undefined});
+  expect(rendered.root.find(node => node.type === 'MockMeldWidget').props.order).toBe(order);
+  await act(async () => rendered.unmount());
+});

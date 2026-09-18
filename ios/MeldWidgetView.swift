@@ -125,13 +125,22 @@ final class MeldWidgetView: UIView {
 
     /// Forwards a native `MeldError` to JS, including `detail` for parity with the native struct.
     private func send(error e: MeldError) {
-        onError?([
+        var payload: [String: Any] = [
             "orderId": e.orderId ?? "",
             "code": e.code,
             "message": e.message,
             "detail": e.detail ?? "",
             "recoverable": e.recoverable,
-        ])
+        ]
+        if let advice = e.headlessError {
+            payload["headlessError"] = [
+                "version": advice.version,
+                "category": advice.category.rawValue,
+                "recovery": advice.recovery.rawValue,
+                "automaticRetryAllowed": advice.automaticRetryAllowed,
+            ]
+        }
+        onError?(payload)
     }
 
     private func emitError(code: String, message: String) {
