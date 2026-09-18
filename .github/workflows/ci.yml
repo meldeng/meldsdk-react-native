@@ -18,6 +18,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  bridge:
+    name: Bridge state and input tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -27,6 +34,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
+      - run: npm test
       - run: npm run typecheck
 
   example:
@@ -104,7 +112,7 @@ jobs:
       # drifting away from the API the bridge actually calls.
       - name: pod install
         working-directory: example/ios
-        run: pod install --repo-update
+        run: USE_FRAMEWORKS=static pod install --repo-update
 
       - name: Pick a simulator
         id: sim
