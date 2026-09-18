@@ -1,4 +1,7 @@
 import React from 'react';
+import { parseHeadlessError } from './headlessError';
+import type { MeldHeadlessError } from './headlessError';
+export type { MeldHeadlessError, MeldHeadlessErrorCategory, MeldHeadlessErrorRecovery } from './headlessError';
 import { requireNativeComponent, NativeModules, Platform, type ViewStyle } from 'react-native';
 import { canMountOrder, inspectCapabilities, inspectPresentationCapabilities, type MeldHeadlessPresentation } from './nativeSupport';
 
@@ -32,8 +35,10 @@ export interface MeldError {
   message: string;
   /** Extra diagnostic detail when the SDK has it (e.g. an NSError domain/code). May be empty. */
   detail?: string;
-  /** Whether retrying the same order may succeed (vs. needing a new order). */
+  /** Whether this mounted flow can continue. False never authorizes a new order or payment. */
   recoverable: boolean;
+  /** Validated advice from shared action failures; absent on older binaries and legacy surfaces. */
+  headlessError?: MeldHeadlessError;
 }
 
 export interface MeldCapabilities {
@@ -207,7 +212,7 @@ export function MeldWidget(props: MeldWidgetProps) {
       onPaymentSubmitted={(e) => onPaymentSubmitted?.(e.nativeEvent.orderId)}
       onStatusChange={(e) => onStatusChange?.(e.nativeEvent)}
       onCancel={(e) => onCancel?.(e.nativeEvent.orderId)}
-      onError={(e) => onError?.(e.nativeEvent)}
+      onError={(e) => onError?.({...e.nativeEvent, headlessError: parseHeadlessError(e.nativeEvent.headlessError)})}
     />
   );
 }

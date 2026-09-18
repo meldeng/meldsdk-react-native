@@ -45,7 +45,7 @@
     }
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test Tests/nativeSupport.test.mjs",
+    "test": "node --experimental-strip-types --test Tests/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
