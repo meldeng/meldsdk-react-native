@@ -1,13 +1,15 @@
 import React from 'react';
 import { requireNativeComponent, NativeModules, Platform, type ViewStyle } from 'react-native';
+import { canMountOrder, inspectCapabilities } from './nativeSupport';
 
 export type MeldEnvironment = 'sandbox' | 'qa' | 'production';
 export type MeldStatus = 'pending' | 'completed' | 'failed' | 'cancelled';
 
 /**
  * The `HeadlessOrderResponse` from your backend (`POST /crypto/order/headless`). The SDK forwards
- * it to the native layer verbatim and never reads individual fields, so this is an open JSON
- * object (string keys, `unknown` values) rather than a fixed schema — but it's narrower than
+ * it to the native layer verbatim. JavaScript only checks bridge compatibility and event identity,
+ * so this is an open JSON object (string keys, `unknown` values) rather than a fixed schema.
+ * It is narrower than
  * `object`: callers must pass a string-keyed map and narrow values before using them.
  */
 export type MeldOrder = Record<string, unknown>;
@@ -33,7 +35,7 @@ export interface MeldError {
 }
 
 export interface MeldCapabilities {
-  /** True if this SDK can embed the order with `<MeldWidget>`. Guard on this before rendering. */
+  /** Whether the surface needs a visible host. Check surface !== 'unsupported' for support. */
   embeddable: boolean;
   surface: string;
   requiresUserGesture: boolean;
@@ -69,11 +71,11 @@ export const Meld = {
   },
 
   /**
-   * Inspect an order before rendering `<MeldWidget>` — guard on `.embeddable`. Async because it
+   * Inspect an order before rendering `<MeldWidget>` — guard on surface !== 'unsupported'. Async because it
    * crosses the native bridge (the web/iOS equivalent is synchronous).
    */
   capabilities(order: MeldOrder): Promise<MeldCapabilities> {
-    return NativeModules.MeldModule.capabilities(order);
+    return inspectCapabilities(order, NativeModules.MeldModule);
   },
 
   /**
@@ -93,22 +95,22 @@ export const Meld = {
 
 /**
  * Inputs a native Apple Pay sheet needs beyond what the order carries. Everything here is data the
- * order was created with — the duplication is a wart of today's contract, not a design: once the
- * backend serves the payment-request recipe on the order, only `clientIpAddress` (which only the
- * device knows) and your own label remain.
+ * order was created with. Shared-action protocols resolve wallet and request IP on the server.
+ * The native adapter validates which fields its declared protocol needs; callers do not select
+ * a provider-specific endpoint.
  *
- * `amount`, `currencyCode` and `walletAddress` MUST match the order. `clientIpAddress` must be the
- * same device IP the order was created with — the provider binds the transaction to it.
+ * Amount/currency must match the order. Wallet/IP are required only for historical native-token
+ * orders; when supplied, they must match that order's original inputs.
  */
 export interface MeldApplePayRequest {
   /** Fiat amount as a decimal string, e.g. "15.00". */
   amount: string;
   /** Fiat currency, ISO 4217, e.g. "EUR". */
   currencyCode: string;
-  /** Destination crypto wallet address. */
-  walletAddress: string;
-  /** The device's public IP — the same value sent at order creation. */
-  clientIpAddress: string;
+  /** Destination wallet; required only by historical native-token orders. */
+  walletAddress?: string;
+  /** Original device IP; required only by historical native-token orders. */
+  clientIpAddress?: string;
   email?: string;
   /** Line-item label on the sheet (Apple prepends "Pay "). */
   summaryItemLabel?: string;
@@ -141,9 +143,9 @@ export interface MeldWidgetProps {
   order: MeldOrder;
   /**
    * Required only for an Apple Pay order the provider expects US to present — the SDK builds the
-   * PassKit sheet from it. Ignored for every other surface, including provider-hosted Apple Pay,
-   * so you can pass it unconditionally for an `APPLE_PAY` order without knowing which provider
-   * the order was routed to. That is the point: the shape is the SDK's business, not yours.
+   * PassKit sheet from it. Every supplied request is validated before mounting, even when the
+   * selected adapter does not need it. You can pass a valid request for any `APPLE_PAY` order
+   * without knowing which provider the order was routed to.
    */
   applePay?: MeldApplePayRequest;
   onReady?: (orderId?: string) => void;
@@ -172,6 +174,20 @@ export interface MeldWidgetProps {
  */
 export function MeldWidget(props: MeldWidgetProps) {
   const { onReady, onPaymentSubmitted, onStatusChange, onCancel, onError, ...rest } = props;
+  const supportedBridge = canMountOrder(props.order, NativeModules.MeldModule);
+  const orderId = typeof props.order.id === 'string' ? props.order.id : undefined;
+  const errorHandler = React.useRef(onError);
+  errorHandler.current = onError;
+  React.useEffect(() => {
+    if (!supportedBridge) {
+      errorHandler.current?.({
+        orderId, code: 'UNSUPPORTED_NATIVE_PROTOCOL',
+        message: 'This app build does not support the order presentation. Update the native app.',
+        recoverable: false,
+      });
+    }
+  }, [supportedBridge, orderId]);
+  if (!supportedBridge) return null;
   return (
     <NativeMeldWidget
       {...rest}
