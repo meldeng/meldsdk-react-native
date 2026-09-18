@@ -17,5 +17,7 @@ Pods/
 !default.xcworkspace
 
 # Misc
+.build/
+.swiftpm/
 .DS_Store
 .idea/

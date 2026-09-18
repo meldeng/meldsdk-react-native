@@ -18,8 +18,13 @@ target 'MeldRNDemo' do
   config = use_native_modules!
 
   # The native Meld iOS SDK (the wrapper's MeldReactNative.podspec depends on it), resolved by
-  # name from CocoaPods trunk.
-  pod 'MeldSDK', '~> 0.5'
+  # name from CocoaPods trunk. A coordinated, unpublished checkout can be tested locally with
+  # MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.8.0 pod install.
+  if ENV['MELD_IOS_SDK_PATH']
+    pod 'MeldSDK', :path => File.expand_path(ENV['MELD_IOS_SDK_PATH'])
+  else
+    pod 'MeldSDK', '~> 0.8'
+  end
 
   use_react_native!(
     :path => config[:reactNativePath],

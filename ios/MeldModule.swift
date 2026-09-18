@@ -9,6 +9,8 @@ import MeldSDK
 @objc(MeldModule)
 final class MeldModule: NSObject {
     @objc static func requiresMainQueueSetup() -> Bool { true }
+    @objc var methodQueue: DispatchQueue { .main }
+    @objc func constantsToExport() -> [String: Any] { ["headlessProtocolVersion": 1] }
 
     @objc func configure(_ environment: NSString) {
         // Parsed by raw value rather than a "production or else sandbox" test: silently collapsing
