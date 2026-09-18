@@ -77,6 +77,26 @@ an OTA JavaScript update), capabilities report `unsupported` and the component e
 `UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. A new iOS app build is required. Android
 currently supports legacy orders only; declared orders remain unsupported there.
 
+### Check a quote before creating an order
+
+```tsx
+const presentation = quote.headlessPresentation;
+if (!presentation) return; // Select an explicitly supported alternative; never infer from provider name.
+const caps = await Meld.presentationCapabilities(quote.paymentMethodType, presentation);
+if (caps.surface === 'unsupported') return;
+```
+
+The check consults the running native app's adapter registry with the exact payment method,
+surface, protocol and version. It makes no provider request and needs no order or credentials.
+An older bridge without this method (and Android today) returns `unsupported`, including when
+new JavaScript arrives through an OTA update. Unknown or malformed declarations also fail closed.
+
+This is advisory SDK support. Continue checking server requirements, route eligibility and device
+Apple Pay readiness, then call `Meld.capabilities(order)` on the complete create response before
+mounting. Preflight does not authorize an order, satisfy legal requirements or guarantee a payable
+order. `embeddable: false` is valid for a supported native sheet. This API requires the coordinated
+unreleased native **0.8** stack described above.
+
 ### Apple Pay
 
 The same component, plus an `applePay` prop carrying what the order doesn't:
