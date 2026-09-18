@@ -9,5 +9,9 @@ RCT_EXTERN_METHOD(capabilities:(NSDictionary *)order
                   rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(canPresentApplePay:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(presentationCapabilities:(NSString *)paymentMethodType
+                  presentation:(NSDictionary *)presentation
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 
 @end
