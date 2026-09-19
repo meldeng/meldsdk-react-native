@@ -5,7 +5,7 @@ import { parseHeadlessError } from './headlessError';
 import type { MeldHeadlessError } from './headlessError';
 export type { MeldHeadlessError, MeldHeadlessErrorCategory, MeldHeadlessErrorRecovery } from './headlessError';
 import { requireNativeComponent, NativeModules, Platform, type ViewStyle } from 'react-native';
-import { canMountOrder, inspectCapabilities, inspectPresentationCapabilities, type MeldHeadlessPresentation } from './nativeSupport';
+import { configureNative, isNativeBridgeAvailable, canMountOrder, inspectCapabilities, inspectPresentationCapabilities, type MeldHeadlessPresentation } from './nativeSupport';
 
 export type { MeldHeadlessPresentation } from './nativeSupport';
 
@@ -62,24 +62,16 @@ export const Meld = {
    * payment surface, so an app on an older binary falls back instead of rendering something that
    * cannot work.
    */
-  isNativeModuleAvailable: Platform.OS === 'ios' && NativeModules.MeldModule != null,
+  isNativeModuleAvailable: isNativeBridgeAvailable(Platform.OS, NativeModules.MeldModule),
 
   /**
    * One-time setup. Mirrors `Meld.configure(environment:)` on native.
    *
-   * NOTE: `'qa'` is honoured on iOS only. The Android SDK's environment enum has just
-   * sandbox/production, so it resolves `'qa'` to sandbox — which would point an Android card
-   * widget at the wrong host for a QA order. Warned rather than silently accepted; remove this
-   * once the Android SDK carries a QA case.
+   * NOTE: 'qa' is supported only by iOS. Unsupported environment selections throw before
+   * reaching native code; Android must not reinterpret QA as sandbox.
    */
   configure(environment: MeldEnvironment): void {
-    if (environment === 'qa' && Platform.OS !== 'ios') {
-      console.warn(
-        "[MeldSDK] configure('qa') is iOS-only; this platform will use sandbox. " +
-          'Orders created in QA will not resolve here.',
-      );
-    }
-    NativeModules.MeldModule.configure(environment);
+    configureNative(environment, Platform.OS, NativeModules.MeldModule);
   },
 
   /**

@@ -19,10 +19,16 @@ class MeldWidgetModule(reactContext: ReactApplicationContext) : ReactContextBase
 
     override fun getName() = "MeldModule"
 
+    override fun getConstants(): Map<String, Any> = mapOf("headlessProtocolVersion" to 1)
+
     @ReactMethod
     fun configure(environment: String) {
         Meld.configure(
-            if (environment == "production") MeldEnvironment.PRODUCTION else MeldEnvironment.SANDBOX,
+            when (environment) {
+                "production" -> MeldEnvironment.PRODUCTION
+                "sandbox" -> MeldEnvironment.SANDBOX
+                else -> throw IllegalArgumentException("Unsupported Android Meld environment")
+            },
         )
     }
 
@@ -44,4 +50,20 @@ class MeldWidgetModule(reactContext: ReactApplicationContext) : ReactContextBase
             },
         )
     }
+    /** Decode with the native SDK, preserving the same strict version rules as actual orders. */
+    @ReactMethod
+    fun presentationCapabilities(paymentMethodType: String, presentation: ReadableMap, promise: Promise) {
+        val descriptor = try {
+            MeldOrder.fromMap(mapOf("headlessPresentation" to presentation.toHashMap())).headlessPresentation
+        } catch (_: Exception) {
+            null
+        }
+        val caps = descriptor?.let { Meld.presentationCapabilities(it, paymentMethodType) }
+        promise.resolve(Arguments.createMap().apply {
+            putBoolean("embeddable", caps?.embeddable ?: false)
+            putString("surface", caps?.surface ?: "unsupported")
+            putBoolean("requiresUserGesture", caps?.requiresUserGesture ?: false)
+        })
+    }
+
 }
