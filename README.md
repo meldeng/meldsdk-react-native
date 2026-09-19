@@ -74,8 +74,10 @@ response, including `headlessPresentation` and `paymentActions`, and pass it thr
 
 Declared protocols also require a compatible installed native bridge. On an older binary (including
 an OTA JavaScript update), capabilities report `unsupported` and the component emits
-`UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. A new iOS app build is required. Android
-currently supports legacy orders only; declared orders remain unsupported there.
+`UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. A new native app build is required.
+Android supports declared version 1 `EMBEDDED_WIDGET` card protocols `MERCURYO_WIDGET`,
+`UPHOLD_WIDGET` and `BANXA_CHECKOUT` with the coordinated native 0.7.0 stack. Other Android
+protocols, including Apple Pay, remain unsupported.
 
 ### Check a quote before creating an order
 
@@ -88,14 +90,15 @@ if (caps.surface === 'unsupported') return;
 
 The check consults the running native app's adapter registry with the exact payment method,
 surface, protocol and version. It makes no provider request and needs no order or credentials.
-An older bridge without this method (and Android today) returns `unsupported`, including when
+An older bridge without this method returns `unsupported`, including when
 new JavaScript arrives through an OTA update. Unknown or malformed declarations also fail closed.
 
 This is advisory SDK support. Continue checking server requirements, route eligibility and device
 Apple Pay readiness, then call `Meld.capabilities(order)` on the complete create response before
 mounting. Preflight does not authorize an order, satisfy legal requirements or guarantee a payable
 order. `embeddable: false` is valid for a supported native sheet. This API requires the coordinated
-unreleased native **0.8** stack described above.
+unreleased iOS **0.8** / Android **0.7.0** stack. Android 0.7.0 must be released before normal
+consumer builds can resolve it; local coordinated validation uses an isolated Maven directory.
 
 ### Apple Pay
 
@@ -270,3 +273,15 @@ Other renewal states must be handled through the shared backend protocol.
 
 These APIs belong to the unreleased coordinated SDK stack. They do not enable
 server renewal, complete app recovery or make unsupported native platforms usable.
+
+### Native availability and environment selection
+
+`Meld.isNativeModuleAvailable` detects an installed iOS or Android module; it does not promise
+support for a quote or wallet. Check `presentationCapabilities`, then actual-order `capabilities`.
+`canPresentApplePay()` remains false on Android. Older native binaries still reject declared
+orders even if newer JavaScript arrives through an OTA update.
+
+`Meld.configure('qa')` is supported only on iOS. Android now rejects that selection instead of
+silently targeting sandbox. Missing native modules and unsupported platform/environment
+combinations throw before dispatch. Configure the matching supported environment before
+requesting quotes or mounting an order.

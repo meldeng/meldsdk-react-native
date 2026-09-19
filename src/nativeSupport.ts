@@ -1,5 +1,6 @@
 type Order = Record<string, unknown>;
 interface Bridge {
+  configure?: (environment: string) => void;
   capabilities?: (order: Order) => Promise<unknown>;
   presentationCapabilities?: (paymentMethodType: string, presentation: MeldHeadlessPresentation) => Promise<unknown>;
   headlessProtocolVersion?: unknown;
@@ -48,4 +49,20 @@ function parseCapabilities(value: unknown): Capabilities {
   if (typeof result.embeddable !== 'boolean' || typeof result.surface !== 'string' || !result.surface
       || typeof result.requiresUserGesture !== 'boolean') return { ...unsupported };
   return { embeddable: result.embeddable, surface: result.surface, requiresUserGesture: result.requiresUserGesture };
+}
+
+/** Module presence is separate from support for any particular protocol or device wallet. */
+export function isNativeBridgeAvailable(platform: string, bridge?: Bridge | null): boolean {
+  return (platform === 'ios' || platform === 'android') && typeof bridge?.capabilities === 'function';
+}
+
+/** Never silently reinterpret a QA order as sandbox on a platform without QA support. */
+export function configureNative(environment: string, platform: string, bridge?: Bridge | null): void {
+  if (!isNativeBridgeAvailable(platform, bridge) || typeof bridge?.configure !== 'function') {
+    throw new Error('Meld native module is unavailable.');
+  }
+  if (environment !== 'sandbox' && environment !== 'production' && !(platform === 'ios' && environment === 'qa')) {
+    throw new Error('Meld environment is unsupported on this platform.');
+  }
+  bridge.configure(environment);
 }
