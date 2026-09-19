@@ -285,3 +285,11 @@ orders even if newer JavaScript arrives through an OTA update.
 silently targeting sandbox. Missing native modules and unsupported platform/environment
 combinations throw before dispatch. Configure the matching supported environment before
 requesting quotes or mounting an order.
+
+
+Android presentation callbacks now forward the same four-field `headlessError` envelope as iOS.
+With the coordinated Android 0.7.0 SDK, unclassified widget and mount errors advise
+`OUTCOME_UNKNOWN / READ_STATE` with automatic retries prohibited. Keep the existing checkout
+identity and reconcile through your backend; `recoverable` remains only a legacy presentation hint.
+The existing JS parser validates the metadata. Older native binaries omit it and require the same
+conservative fallback. No JavaScript update can add this native field to an installed old binary.
