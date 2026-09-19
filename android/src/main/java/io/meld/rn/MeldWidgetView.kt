@@ -109,5 +109,11 @@ class MeldWidgetView(private val reactContext: ThemedReactContext) : FrameLayout
             putString("message", e.message)
             putString("detail", e.detail ?: "")
             putBoolean("recoverable", e.recoverable)
+            putMap("headlessError", Arguments.createMap().apply {
+                putInt("version", e.headlessError.version)
+                putString("category", e.headlessError.category)
+                putString("recovery", e.headlessError.recovery)
+                putBoolean("automaticRetryAllowed", e.headlessError.automaticRetryAllowed)
+            })
         }
 }
