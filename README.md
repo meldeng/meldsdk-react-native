@@ -236,3 +236,37 @@ and event log). See [example/README.md](example/README.md) to set up credentials
 ## License
 
 Proprietary. See [LICENSE](LICENSE).
+
+### Applying renewed order authorization
+
+For orders advertising `paymentActions.authorizationRenewal`, the JavaScript SDK
+provides `Meld.canRenewOrderAuthorization(order, environment)` and
+`Meld.applyOrderAuthorization(order, response, environment)`. These helpers make
+no network calls and do not require integrator credentials. Capability discovery
+is advisory: use your authenticated backend to READ current eligibility and
+explicitly RENEW authorization for the existing order.
+
+End/unmount the previous native flow before renewal. Persist the renewal request
+identity (observed authorization UUID and separate idempotency UUID) before
+sending it; recover a lost response with that exact request/key. Never persist
+the returned bearer or reset the original create/payment identity.
+
+```ts
+if (Meld.canRenewOrderAuthorization(order, environment)) {
+  // Obtain this response through your authenticated backend after explicit renewal.
+  const renewedOrder = Meld.applyOrderAuthorization(order, authorizationResponse, environment);
+  // Check normal SDK capabilities and present renewedOrder in a fresh mount.
+}
+```
+
+Only a current `AUTHORIZED` response for the same order/provider is accepted.
+The declared shared `continuationToken` or `sessionToken` field is copied with the
+new bearer; the input order, financial payload, provider bootstrap and operation
+identities stay unchanged. Wrong environments, endpoints, unsafe pointers,
+expired credentials and incompatible responses throw `MeldOrderAuthorizationError`
+with fixed diagnostics and no sensitive payload. The helper does not stop native
+work, clear pending operation journals, refresh provider consent, or retry payment.
+Other renewal states must be handled through the shared backend protocol.
+
+These APIs belong to the unreleased coordinated SDK stack. They do not enable
+server renewal, complete app recovery or make unsupported native platforms usable.
