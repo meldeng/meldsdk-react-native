@@ -1,3 +1,5 @@
+import { canRenewOrderAuthorization, applyOrderAuthorization } from './orderAuthorization';
+export { canRenewOrderAuthorization, applyOrderAuthorization, MeldOrderAuthorizationError } from './orderAuthorization';
 import React from 'react';
 import { parseHeadlessError } from './headlessError';
 import type { MeldHeadlessError } from './headlessError';
@@ -49,6 +51,9 @@ export interface MeldCapabilities {
 }
 
 export const Meld = {
+  canRenewOrderAuthorization,
+  applyOrderAuthorization,
+
   /**
    * True when the SDK's native code is compiled into the RUNNING binary.
    *
