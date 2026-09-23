@@ -1,7 +1,7 @@
 # @meldcrypto/react-native-sdk
 
 React Native wrapper for the Meld SDK — embed a crypto on/off-ramp provider's payment widget
-(Mercuryo card today) with one component. **Supports iOS and Android**, with the same JS API and
+(including declared native, hosted and wallet protocols on iOS) with one component. **Supports iOS and Android**, with the same JS API and
 event model on both. Wraps the native [meldsdk-ios](https://github.com/meldeng/meldsdk-ios#readme)
 and [meldsdk-android](https://github.com/meldeng/meldsdk-android#readme) SDKs.
 
@@ -22,6 +22,18 @@ to add to your `Podfile`. Just install with **static frameworks** (`MeldSDK` is 
 ```bash
 cd ios && USE_FRAMEWORKS=static pod install
 ```
+
+This release requires **MeldSDK 0.8** for protocol dispatch, shared payment actions and native Stripe
+execution. A Podfile.lock that still pins 0.7 must be updated (`pod update MeldSDK`). To test the
+example against a local native checkout instead of the published pod:
+
+```bash
+cd example/ios
+MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.8.0 USE_FRAMEWORKS=static pod install
+```
+
+The override compiles the native SDK from source and does not relax the minimum dependency; CI and
+releases resolve the published pod.
 
 ### Android
 
@@ -55,8 +67,35 @@ Meld.configure('sandbox'); // or 'production'
 />
 ```
 
-Optionally guard before rendering: `if ((await Meld.capabilities(order)).embeddable) { … }`
-(async on RN since it crosses the native bridge).
+Guard before rendering: `if ((await Meld.capabilities(order)).surface !== 'unsupported') { … }`
+(async on RN since it crosses the native bridge). `embeddable` tells you whether the component needs
+a visible area; it does not indicate whether a native sheet is supported. Keep the complete order
+response, including `headlessPresentation` and `paymentActions`, and pass it through unchanged.
+
+Declared protocols also require a compatible installed native bridge. On an older binary (including
+an OTA JavaScript update), capabilities report `unsupported` and the component emits
+`UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. A new iOS app build is required. Android
+currently supports legacy orders only; declared orders remain unsupported there.
+
+### Check a quote before creating an order
+
+```tsx
+const presentation = quote.headlessPresentation;
+if (!presentation) return; // Select an explicitly supported alternative; never infer from provider name.
+const caps = await Meld.presentationCapabilities(quote.paymentMethodType, presentation);
+if (caps.surface === 'unsupported') return;
+```
+
+The check consults the running native app's adapter registry with the exact payment method,
+surface, protocol and version. It makes no provider request and needs no order or credentials.
+An older bridge without this method (and Android today) returns `unsupported`, including when
+new JavaScript arrives through an OTA update. Unknown or malformed declarations also fail closed.
+
+This is advisory SDK support. Continue checking server requirements, route eligibility and device
+Apple Pay readiness, then call `Meld.capabilities(order)` on the complete create response before
+mounting. Preflight does not authorize an order, satisfy legal requirements or guarantee a payable
+order. `embeddable: false` is valid for a supported native sheet. This API requires MeldSDK 0.8
+or later.
 
 ### Apple Pay
 
@@ -69,8 +108,6 @@ if (await Meld.canPresentApplePay()) {                 // a card in Wallet, not 
     applePay={{
       amount: '15.00',                                  // must match the order
       currencyCode: 'EUR',
-      walletAddress: 'bc1q…',
-      clientIpAddress: deviceIp,                        // the SAME IP the order was created with
       summaryItemLabel: 'Acme — Buy BTC',
     }}
     onPaymentSubmitted={() => showProcessing()}
@@ -88,6 +125,19 @@ component.
 
 A native sheet is modal, so nothing draws in the view while it is up. Keep the component mounted
 anyway: unmounting tears the surface down.
+
+Wallet address and device IP are optional for modern shared-action protocols. Historical
+native-token orders still require `walletAddress` and `clientIpAddress` from their original inputs.
+An explicitly malformed Apple Pay prop reports `INVALID_APPLE_PAY_REQUEST`; it is never silently
+ignored. The native adapter checks any supplied amount/currency against the order where required.
+
+The iOS view waits for attachment and, for embedded protocols, a nonzero visible layout before
+mounting. Replacing order/payment inputs tears down the old mount; late callbacks from it are
+discarded. Stable prop batches do not restart the payment. This preserves the same component API
+for Coinbase's hosted flow, Mercuryo's wallet flow and Stripe's native SDK flow.
+
+Native identity verification requires an app-owned `NSCameraUsageDescription`. The app must also
+have the Apple Pay merchant entitlements and provider/account enrollment for the configured route.
 
 **iOS setup.** A native sheet needs the Apple Pay entitlement in *your* app. For Expo, add the
 config plugin — the merchant id is yours, and must be paired with a Payment Processing certificate

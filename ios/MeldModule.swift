@@ -9,6 +9,8 @@ import MeldSDK
 @objc(MeldModule)
 final class MeldModule: NSObject {
     @objc static func requiresMainQueueSetup() -> Bool { true }
+    @objc var methodQueue: DispatchQueue { .main }
+    @objc func constantsToExport() -> [String: Any] { ["headlessProtocolVersion": 1] }
 
     @objc func configure(_ environment: NSString) {
         // Parsed by raw value rather than a "production or else sandbox" test: silently collapsing
@@ -36,6 +38,24 @@ final class MeldModule: NSObject {
             return
         }
         let caps = Meld.capabilities(for: parsed)
+        resolve([
+            "embeddable": caps.embeddable,
+            "surface": caps.surface,
+            "requiresUserGesture": caps.requiresUserGesture,
+        ])
+    }
+
+    /// Advisory descriptor support from the installed adapter registry; no order or network request.
+    @objc func presentationCapabilities(_ paymentMethodType: NSString,
+                                        presentation: NSDictionary,
+                                        resolver resolve: @escaping RCTPromiseResolveBlock,
+                                        rejecter reject: @escaping RCTPromiseRejectBlock) {
+        guard let json = presentation as? [String: Any],
+              let descriptor = MeldHeadlessPresentation(json: json) else {
+            resolve(["embeddable": false, "surface": "unsupported", "requiresUserGesture": false])
+            return
+        }
+        let caps = Meld.capabilities(for: descriptor, paymentMethodType: paymentMethodType as String)
         resolve([
             "embeddable": caps.embeddable,
             "surface": caps.surface,
