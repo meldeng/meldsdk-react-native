@@ -32,7 +32,10 @@ export interface MeldError {
   message: string;
   /** Extra diagnostic detail when the SDK has it (e.g. an NSError domain/code). May be empty. */
   detail?: string;
-  /** Whether retrying the same order may succeed (vs. needing a new order). */
+  /**
+   * True only when a visible embedded card widget hit a problem the customer can fix in place; not
+   * terminal. False is terminal on iOS: `code` says whether a payment attempt may exist.
+   */
   recoverable: boolean;
 }
 
@@ -162,13 +165,25 @@ export interface MeldWidgetProps {
   applePay?: MeldApplePayRequest;
   onReady?: (orderId?: string) => void;
   /**
-   * The customer finished paying. A UX hint, never settlement — unmount and show a processing
-   * state. Fires exactly once per mount, whether the provider reports it as its own "payment
-   * finished" message or as a `completed` status, so no de-duplication is needed.
+   * The customer finished paying: the success terminal. Never settlement — that is your backend
+   * webhook. Fires exactly once per mount, whether the provider reports it as its own "payment
+   * finished" message or as a `completed` status, so no de-duplication is needed. You can unmount
+   * straight away; the SDK keeps a provider-hosted page alive until it reports its outcome or 60
+   * seconds pass.
    */
   onPaymentSubmitted?: (orderId?: string) => void;
+  /**
+   * Informational, e.g. a "Processing" label; never end the flow on it. A `failed` status is
+   * followed by `onError` and a `cancelled` status by `onCancel`, so react to those instead.
+   */
   onStatusChange?: (e: MeldStatusChange) => void;
+  /** The flow ended without a payment; nothing will settle for this order. Terminal. */
   onCancel?: (orderId?: string) => void;
+  /**
+   * With `recoverable: false` the flow cannot continue: terminal, and `e.code` says whether a
+   * payment attempt may exist (treat unknown codes as "may exist"). `recoverable: true` comes only
+   * from visible embedded card widgets and is not terminal. Route on `e.code`, not `e.message`.
+   */
   onError?: (e: MeldError) => void;
 }
 
@@ -177,12 +192,14 @@ export interface MeldWidgetProps {
  * page, or a native PassKit sheet. Which one is decided by the order, not by the caller: render the
  * same component for every provider and pass `applePay` whenever the order is `APPLE_PAY`.
  *
- * A native sheet is modal, so nothing appears in this view while it is up; keep the component
- * mounted regardless, since unmounting it tears the surface down.
+ * On iOS both Apple Pay surfaces report `embeddable: false`, so a zero-size component is enough.
+ * Keep it mounted until a terminal callback: unmounting before one tears the surface down with no
+ * further callback.
  *
- * Same lifecycle as the native SDK: terminal `failed` also fires `onError`, `cancelled` also fires
- * `onCancel`. `completed` is the provider's "order complete", not settlement — that's your backend
- * webhook.
+ * On iOS the SDK delivers exactly one terminal callback per mount — `onPaymentSubmitted`,
+ * `onCancel`, or `onError` with `recoverable: false` — and nothing after it. `onStatusChange` is
+ * informational. Android does not enforce this yet: ignore anything that follows the first
+ * terminal callback there.
  */
 export function MeldWidget(props: MeldWidgetProps) {
   const { onReady, onPaymentSubmitted, onStatusChange, onCancel, onError, ...rest } = props;
