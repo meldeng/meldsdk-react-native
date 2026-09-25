@@ -60,10 +60,10 @@ Meld.configure('sandbox'); // or 'production'
   style={{ flex: 1 }}
   order={order}                                  // your backend's order JSON, passed through
   onReady={() => hideSpinner()}
-  onPaymentSubmitted={() => showProcessing()}    // ⚠ UX hint — settlement is your webhook
-  onStatusChange={(e) => { if (e.status === 'completed') showComplete(); }}
-  onCancel={() => showRetryCTA()}
-  onError={(e) => showError(e.message)}          // also fires on INVALID_ORDER / MOUNT_FAILED
+  onStatusChange={(e) => showStatus(e.status)}   // informational, never the end of the flow
+  onPaymentSubmitted={() => showProcessing()}    // success ⚠ settlement is your webhook
+  onCancel={() => backToCheckout()}              // nothing will settle for this order
+  onError={(e) => handleError(e)}                // route on e.code (see Events)
 />
 ```
 
@@ -119,12 +119,24 @@ if (await Meld.canPresentApplePay()) {                 // a card in Wallet, not 
 
 Pass `applePay` for **any** `APPLE_PAY` order without checking which provider it routed to. Some
 providers hand back a token the SDK presents through PassKit as a native sheet; others host the
-sheet on their own page, which the SDK renders into this component. The prop is read only by the
-surfaces that need it, and choosing between them is the SDK's job — that is the point of one
-component.
+sheet on their own page, which the SDK loads off-screen before opening that page's Apple Pay sheet.
+Either way the customer sees only Apple's sheet. The prop is read only by the surfaces that need
+it (a provider-hosted page does not use it), and choosing between them is the SDK's job — that is
+the point of one component.
+
+On iOS, both report `surface: 'native-applepay'` and `embeddable: false`: the SDK presents the
+payment UI, so the component needs no visible area and a zero-size component is enough. Both also
+report `requiresUserGesture: true`, so mount from the customer's tap on your Apple Pay button. A
+provider-hosted page needs iOS 16 or later; on iOS 15 its capabilities report `unsupported`, so
+leave that option out. If there is no window to present it from, the component reports
+`MOUNT_FAILED`.
 
 A native sheet is modal, so nothing draws in the view while it is up. Keep the component mounted
-anyway: unmounting tears the surface down.
+until a terminal callback (see [Events](#events)). Unmounting before one tears the surface down
+with no further callback, so the order's outcome is whatever your backend reports. After
+`onPaymentSubmitted` you can unmount straight away: the SDK keeps a provider-hosted page alive on
+its own until the page reports its outcome, or 60 seconds pass, so unmounting does not cut the
+provider off.
 
 Wallet address and device IP are optional for modern shared-action protocols. Historical
 native-token orders still require `walletAddress` and `clientIpAddress` from their original inputs.
@@ -176,21 +188,55 @@ provider-hosted Apple Pay — that runs under the provider's merchant id on thei
 
 | Event | Fires when | Do |
 |---|---|---|
-| `onReady` | Widget document loaded | Hide spinner |
-| `onPaymentSubmitted` | User finished the provider payment flow — **exactly once per mount** (UX hint only) | Unmount, show "processing" |
-| `onStatusChange` | Order status changed; `e.status` is `pending` \| `completed` \| `failed` \| `cancelled` | React to status; `completed` = provider "order complete" (still not settlement) |
-| `onCancel` | User cancelled | Show retry CTA |
-| `onError` | Load failure, bad order, or terminal `failed` status | Show error; `e.recoverable` says retry vs. new order |
+| `onReady` | The widget loaded, or the Apple Pay sheet is opening | Hide spinner |
+| `onPaymentSubmitted` | The customer finished paying — **exactly once per mount**. The success terminal | Unmount, show "processing" (settlement is your webhook) |
+| `onStatusChange` | Order status changed; `e.status` is `pending` \| `completed` \| `failed` \| `cancelled` | Informational, e.g. a "Processing" label; never end the flow on it |
+| `onCancel` | The flow ended without a payment. Terminal | Back to checkout; the next attempt is a new order |
+| `onError` | The flow cannot continue (`recoverable: false`, terminal), or an embedded card widget hit a problem the customer can fix in place (`recoverable: true`, not terminal) | Route on `e.code` (below) |
 
 `onPaymentSubmitted` fires once and only once, however the provider signals it. Some send a
 "payment finished" message and never a status; some report `completed` and never a finished
 message; some send both, in either order. The native SDK collapses that into a single callback,
-so you do not need a `settledOnce` guard of your own. A terminal `failed`/`cancelled` status, a
-cancel, or a non-recoverable error closes it, so a failure is never followed by a submission.
+so you do not need a `settledOnce` guard of your own, and a `completed` status is never a second
+success signal. A terminal `failed`/`cancelled` status, a cancel, or a non-recoverable error closes
+it, so a failure is never followed by a submission.
 
 `status` is normalized across providers — code against it, not the raw provider string (in
-`e.providerStatus`). A terminal `failed` also fires `onError`, and a `cancelled` also fires
-`onCancel`. Every callback also receives the `orderId`.
+`e.providerStatus`). A `failed` status is followed by `onError`, and a `cancelled` status by
+`onCancel`, so react to those callbacks rather than to the status. `pending` means the provider is
+processing and promises nothing by itself. Every callback also receives the `orderId`.
+
+### Terminal contract (iOS)
+
+On iOS, from mount until you unmount the component, the SDK delivers **exactly one** terminal
+callback, and nothing after it: no `onStatusChange` and no `onReady`.
+
+- `onPaymentSubmitted`: the payment was submitted. Settlement arrives by webhook.
+- `onCancel`: nothing will settle for this order.
+- `onError` with `recoverable: false`: `e.code` says whether a payment attempt may exist.
+
+`recoverable: true` comes only from visible embedded card widgets, and is not terminal. Unmounting
+before a terminal callback delivers none.
+
+| `e.code` | A payment attempt may exist? | Do |
+|---|---|---|
+| `APPLE_PAY_UNAVAILABLE` | no | Offer hosted checkout or another method |
+| `PRESENTATION_FAILED` | no | Back to your CTA; the next tap creates a new order |
+| `PAYMENT_REJECTED` | no (declined) | Ask the customer to choose another option |
+| `ORDER_STATE_CHANGED` | no | Create a new order |
+| `VERIFICATION_PENDING` | no | Tell the customer the provider is reviewing |
+| `PAYMENT_OUTCOME_UNKNOWN` | **yes** | Follow the order through your backend; never pay this order again |
+| `INVALID_ORDER`, `INVALID_APPLE_PAY_REQUEST`, `MOUNT_FAILED`, `UNSUPPORTED_NATIVE_PROTOCOL` | no (nothing was mounted) | Fix the input, or fall back |
+
+Treat any other code as "a payment attempt may exist", including provider-specific ones such as
+`WAIT_FOR_PAYMENT` or `VERIFICATION_WINDOW_EXPIRED`. `e.detail` carries the raw provider event and
+code (for example `onramp_api.load_error:ERROR_CODE_GUEST_APPLE_PAY_NOT_SUPPORTED`), for logging
+only.
+
+Android does not enforce this contract yet. There, `onPaymentSubmitted` also fires once per mount,
+and a `completed` status also produces it, but statuses and other callbacks can still arrive after
+a terminal one, so ignore anything that follows your first terminal callback. Apple Pay is
+iOS-only.
 
 ## Settlement — webhook, never the SDK
 
