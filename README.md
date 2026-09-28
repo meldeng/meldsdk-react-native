@@ -72,10 +72,15 @@ Guard before rendering: `if ((await Meld.capabilities(order)).surface !== 'unsup
 a visible area; it does not indicate whether a native sheet is supported. Keep the complete order
 response, including `headlessPresentation` and `paymentActions`, and pass it through unchanged.
 
-Declared protocols also require a compatible installed native bridge. On an older binary (including
-an OTA JavaScript update), capabilities report `unsupported` and the component emits
-`UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. A new iOS app build is required. Android
-currently supports legacy orders only; declared orders remain unsupported there.
+Declared protocols also depend on the installed native bridge. A bridge without MeldSDK 0.8's
+protocol registry (Android today, or an older iOS binary running this JavaScript through an OTA
+update) still mounts the version 1 declarations its native dispatch already presents:
+`MERCURYO_WIDGET`, `UPHOLD_WIDGET` and `BANXA_CHECKOUT` cards, plus `BANXA_CHECKOUT`,
+`COINBASE_APPLE_PAY` and `MELD_WALLET_TOKEN` Apple Pay on iOS. An older iOS binary presents
+`MELD_WALLET_TOKEN` through its historical path, which needs `walletAddress` and `clientIpAddress`.
+For any other declaration, such as `STRIPE_CRYPTO_ONRAMP`, capabilities report `unsupported` and
+the component emits `UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. Those need a new iOS
+app build.
 
 ### Check a quote before creating an order
 
@@ -143,10 +148,14 @@ native-token orders still require `walletAddress` and `clientIpAddress` from the
 An explicitly malformed Apple Pay prop reports `INVALID_APPLE_PAY_REQUEST`; it is never silently
 ignored. The native adapter checks any supplied amount/currency against the order where required.
 
-The iOS view waits for attachment and, for embedded protocols, a nonzero visible layout before
-mounting. Replacing order/payment inputs tears down the old mount; late callbacks from it are
-discarded. Stable prop batches do not restart the payment. This preserves the same component API
-for Coinbase's hosted flow, Mercuryo's wallet flow and Stripe's native SDK flow.
+The iOS view mounts once it is in a window and, for embedded protocols, has a nonzero size. An
+embedded surface still zero-size 2 seconds after attaching reports `MOUNT_FAILED` and is not mounted
+later. Leaving the window (a pushed screen, another tab, a full-screen modal) neither ends nor
+restarts the payment, and its callbacks keep arriving; only unmounting the component ends it.
+Replacing the order tears down the old mount and discards its late callbacks, and so does changing
+`applePay` on an `APPLE_PAY` order. Other prop batches, including a rebuilt `applePay` on a card
+order, do not restart the payment. This preserves the same component API for Coinbase's hosted
+flow, Mercuryo's wallet flow and Stripe's native SDK flow.
 
 Native identity verification requires an app-owned `NSCameraUsageDescription`. The app must also
 have the Apple Pay merchant entitlements and provider/account enrollment for the configured route.
