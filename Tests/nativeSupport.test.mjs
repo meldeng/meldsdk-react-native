@@ -13,6 +13,59 @@ test('an OTA bundle cannot dispatch declared orders through an old native resolv
   }
 });
 
+const legacyDeclared = [
+  ['CREDIT_DEBIT_CARD', 'EMBEDDED_WIDGET', 'MERCURYO_WIDGET'],
+  ['CREDIT_DEBIT_CARD', 'EMBEDDED_WIDGET', 'UPHOLD_WIDGET'],
+  ['CREDIT_DEBIT_CARD', 'VENDOR_SDK', 'BANXA_CHECKOUT'],
+  ['APPLE_PAY', 'VENDOR_SDK', 'BANXA_CHECKOUT'],
+  ['APPLE_PAY', 'PROVIDER_HOSTED', 'COINBASE_APPLE_PAY'],
+  ['APPLE_PAY', 'NATIVE_TOKEN', 'MELD_WALLET_TOKEN'],
+].map(([paymentMethodType, surface, protocol]) => ({
+  id: 'synthetic', paymentMethodType, headlessPresentation: { surface, protocol, version: 1 },
+}));
+const registryOnly = [
+  { id: 'synthetic', paymentMethodType: 'APPLE_PAY',
+    headlessPresentation: { surface: 'NATIVE_SDK', protocol: 'STRIPE_CRYPTO_ONRAMP', version: 1 } },
+  { id: 'synthetic', paymentMethodType: 'CREDIT_DEBIT_CARD',
+    headlessPresentation: { surface: 'NATIVE_SDK', protocol: 'STRIPE_CRYPTO_ONRAMP', version: 1 } },
+  { id: 'synthetic', paymentMethodType: 'CREDIT_DEBIT_CARD',
+    headlessPresentation: { surface: 'EMBEDDED_WIDGET', protocol: 'MERCURYO_WIDGET', version: 2 } },
+  { id: 'synthetic', paymentMethodType: 'APPLE_PAY',
+    headlessPresentation: { surface: 'EMBEDDED_WIDGET', protocol: 'MERCURYO_WIDGET', version: 1 } },
+  { id: 'synthetic', headlessPresentation: { surface: 'EMBEDDED_WIDGET', protocol: 'MERCURYO_WIDGET', version: 1 } },
+  { id: 'synthetic', paymentMethodType: 'CREDIT_DEBIT_CARD',
+    headlessPresentation: { surface: 'EMBEDDED_WIDGET', protocol: 'MERCURYO_WIDGET', version: '1' } },
+  { id: 'synthetic', paymentMethodType: 'APPLE_PAY', headlessPresentation: null },
+];
+
+test('an Android or pre-0.8 iOS bridge mounts the declarations its legacy dispatch presents', async () => {
+  for (const order of legacyDeclared) {
+    for (const headlessProtocolVersion of [undefined, 0]) {
+      const bridge = { headlessProtocolVersion, async capabilities(value) {
+        assert.equal(value, order); return { embeddable: true, surface: 'embedded', requiresUserGesture: false };
+      } };
+      assert.equal(canMountOrder(order, bridge), true, order.headlessPresentation.protocol);
+      assert.equal((await inspectCapabilities(order, bridge)).surface, 'embedded');
+    }
+  }
+});
+
+test('a pre-0.8 bridge refuses registry-only declarations before reaching native code', async () => {
+  const bridge = { capabilities() { assert.fail('Must not reach old native code'); } };
+  for (const order of registryOnly) {
+    assert.equal(canMountOrder(order, bridge), false, JSON.stringify(order.headlessPresentation));
+    assert.equal((await inspectCapabilities(order, bridge)).surface, 'unsupported');
+  }
+});
+
+test('a registry bridge receives every declaration, including ones it will refuse', async () => {
+  for (const order of [...legacyDeclared, ...registryOnly, declared]) {
+    const bridge = { headlessProtocolVersion: 1, async capabilities(value) { assert.equal(value, order); return caps; } };
+    assert.equal(canMountOrder(order, bridge), true);
+    assert.deepEqual(await inspectCapabilities(order, bridge), caps);
+  }
+});
+
 test('opaque declared order and capabilities pass through a compatible native bridge', async () => {
   const bridge = { headlessProtocolVersion: 1, async capabilities(order) { assert.equal(order, declared); return caps; } };
   assert.equal(canMountOrder(declared, bridge), true);

@@ -7,6 +7,9 @@ import MeldSDK
 final class MeldWidgetView: UIView {
     private let lifecycle = MeldMountLifecycle<MeldWidgetHandle>(unmount: { $0.unmount() })
     private var propsApplied = false
+    private var layoutDeadline: UUID?
+    /// How long an attached embedded surface may stay zero-size before it reports MOUNT_FAILED.
+    private static let layoutGracePeriod: TimeInterval = 2
 
     // Wired up by React Native from the matching JS props.
     @objc var onReady: RCTDirectEventBlock?
@@ -37,8 +40,8 @@ final class MeldWidgetView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { lifecycle.detach() }
-        else { mountIfNeeded() }
+        lifecycle.attached = window != nil
+        mountIfNeeded()
     }
 
     override func layoutSubviews() {
@@ -47,38 +50,29 @@ final class MeldWidgetView: UIView {
     }
 
     private func mountIfNeeded() {
-        guard propsApplied, window != nil else { return }
+        guard propsApplied else { return }
         guard let order else { lifecycle.detach(); return }
 
-        // Parse failures used to be swallowed by `try?`, leaving a blank view with no signal to
-        // JS. Surface them through onError so the integrator can react.
-        let signature: Data
-        let data: Data
-        do {
-            data = try JSONSerialization.data(withJSONObject: order)
-            signature = try JSONSerialization.data(withJSONObject: ["order": order, "applePay": applePay.map { $0 as Any } ?? NSNull()], options: [.sortedKeys])
-        } catch {
-            lifecycle.detach()
-            emitError(code: "INVALID_ORDER", message: "Could not parse the order JSON.")
-            return
-        }
-
-        let parsed: MeldOrder
-        do { parsed = try MeldOrder.from(jsonData: data) }
-        catch {
-            // Remember this failed attempt too: layout changes must not repeatedly report it.
-            lifecycle.mount(signature: signature, make: { _ in throw error }, failed: { [weak self] generation, _ in
+        // Parse failures reach JS through onError, and are remembered like any failed attempt:
+        // layout and window changes must not repeatedly report them.
+        let signature = (try? MeldMountSignature.make(order: order, applePay: applePay)) ?? Data()
+        guard let data = try? JSONSerialization.data(withJSONObject: order),
+              let parsed = try? MeldOrder.from(jsonData: data) else {
+            lifecycle.mount(signature: signature, make: { _ in throw MeldOrderError.malformed }, failed: { [weak self] generation, _ in
                 self?.emit(generation) { $0.emitError(code: "INVALID_ORDER", message: "Could not parse the order JSON.") }
             })
             return
         }
 
-        let ready = !Meld.capabilities(for: parsed).embeddable || (bounds.width > 0 && bounds.height > 0)
+        // A surface that needs no visible area gets no host: the SDK ends a hosted page silently when
+        // its host leaves the window, and here the component, not the window, owns the payment.
+        let embeddable = Meld.capabilities(for: parsed).embeddable
+        let ready = !embeddable || (bounds.width > 0 && bounds.height > 0)
         lifecycle.mount(signature: signature, ready: ready, make: { generation in
             // [weak self]: WebKit retains the script handler (and thus the session) for the
             // WebView's lifetime; capturing self strongly here would form a retain cycle that
             // only breaks at removeFromSuperview -> unmount.
-            return try Meld.mount(parsed, into: self, applePay: applePayRequest(), handlers: MeldEventHandlers(
+            return try Meld.mount(parsed, into: embeddable ? self : nil, applePay: applePayRequest(), handlers: MeldEventHandlers(
                 onReady: { [weak self] id in self?.emit(generation) { $0.onReady?(["orderId": id ?? ""]) } },
                 onPaymentSubmitted: { [weak self] id in self?.emit(generation) { $0.onPaymentSubmitted?(["orderId": id ?? ""]) } },
                 onStatusChange: { [weak self] e in
@@ -105,6 +99,24 @@ final class MeldWidgetView: UIView {
                 }
             }
         })
+        if lifecycle.attached, !ready { armLayoutDeadline() }
+    }
+
+    /// An embedded surface the customer cannot see never reaches a terminal, so a host that stays
+    /// zero-size reports MOUNT_FAILED once and never mounts those inputs.
+    private func armLayoutDeadline() {
+        guard let token = lifecycle.waitToken, layoutDeadline != token else { return }
+        layoutDeadline = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.layoutGracePeriod) { [weak self] in
+            guard let self, self.layoutDeadline == token else { return }
+            self.layoutDeadline = nil
+            guard self.window != nil else { return } // re-armed on the next attachment
+            self.lifecycle.abandonWaiting(token) { generation in
+                self.emit(generation) {
+                    $0.emitError(code: "MOUNT_FAILED", message: "An embedded payment surface needs a nonzero size. Give the component a width and height.")
+                }
+            }
+        }
     }
 
     /// Builds the Apple Pay request from the JS prop, or nil when the prop is absent — which is the
@@ -119,7 +131,7 @@ final class MeldWidgetView: UIView {
     }
 
     private func emit(_ generation: UUID, _ event: (MeldWidgetView) -> Void) {
-        guard window != nil, lifecycle.isCurrent(generation) else { return }
+        guard lifecycle.isCurrent(generation) else { return }
         event(self)
     }
 

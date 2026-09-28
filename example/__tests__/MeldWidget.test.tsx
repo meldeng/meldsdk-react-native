@@ -60,3 +60,42 @@ test('a compatible binary receives the opaque order and forwards normalized even
   expect(onStatusChange).toHaveBeenCalledWith(status);
   await act(async () => rendered.unmount());
 });
+
+test('a bridge without the registry mounts a declared order its legacy dispatch presents', async () => {
+  const mercuryoCard = {
+    id: 'synthetic-card',
+    paymentMethodType: 'CREDIT_DEBIT_CARD',
+    headlessPresentation: {surface: 'EMBEDDED_WIDGET', protocol: 'MERCURYO_WIDGET', version: 1},
+    paymentMethodResponseDetails: {renderMode: 'IFRAME'},
+  };
+  const onError = jest.fn();
+  let rendered!: ReactTestRenderer.ReactTestRenderer;
+  await act(async () => {
+    rendered = ReactTestRenderer.create(
+      <MeldWidget order={mercuryoCard} onError={onError} />,
+    );
+  });
+  const native = rendered.root.find(node => node.type === 'MockMeldWidget');
+  expect(native.props.order).toBe(mercuryoCard);
+  expect(onError).not.toHaveBeenCalled();
+  await act(async () => rendered.unmount());
+});
+
+test('a bridge without the registry refuses a registry-only protocol before mounting', async () => {
+  const stripe = {
+    id: 'synthetic-stripe',
+    paymentMethodType: 'APPLE_PAY',
+    headlessPresentation: {surface: 'NATIVE_SDK', protocol: 'STRIPE_CRYPTO_ONRAMP', version: 1},
+  };
+  const onError = jest.fn();
+  let rendered!: ReactTestRenderer.ReactTestRenderer;
+  await act(async () => {
+    rendered = ReactTestRenderer.create(
+      <MeldWidget order={stripe} onError={onError} />,
+    );
+  });
+  expect(rendered.toJSON()).toBeNull();
+  expect(onError).toHaveBeenCalledTimes(1);
+  expect(onError.mock.calls[0][0].code).toBe('UNSUPPORTED_NATIVE_PROTOCOL');
+  await act(async () => rendered.unmount());
+});
