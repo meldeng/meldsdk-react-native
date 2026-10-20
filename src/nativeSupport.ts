@@ -24,6 +24,11 @@ const legacyDispatch = new Set([
   'APPLE_PAY/NATIVE_TOKEN/MELD_WALLET_TOKEN/1',
 ]);
 
+/** Module presence only; protocol and wallet support come from the capability checks. */
+export function isNativeBridgeAvailable(platform: string, bridge?: Bridge | null): boolean {
+  return (platform === 'ios' || platform === 'android') && typeof bridge?.capabilities === 'function';
+}
+
 /** Native binaries, not OTA JavaScript, own support for declared presentation protocols. */
 export function canMountOrder(order: Order, bridge?: Bridge | null): boolean {
   if (typeof bridge?.capabilities !== 'function') return false;

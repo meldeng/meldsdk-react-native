@@ -6,6 +6,20 @@ apply plugin: "org.jetbrains.kotlin.android"
 
 def safeExtGet = { prop, fallback -> rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback }
 
+// `-PmeldSdkVersion=<v>` (or `rootProject.ext.meldSdkVersion`) builds against an unreleased native
+// SDK published with its `publishToMavenLocal`; Maven Local is then searched for io.meld only.
+def meldSdkOverride = findProperty("meldSdkVersion") ?: safeExtGet("meldSdkVersion", null)
+def meldSdkVersion = meldSdkOverride ?: "0.7.0"
+if (meldSdkOverride != null) {
+    rootProject.allprojects {
+        repositories {
+            mavenLocal {
+                content { includeGroup "io.meld" }
+            }
+        }
+    }
+}
+
 android {
     namespace "io.meld.rn"
     compileSdkVersion safeExtGet("compileSdkVersion", 35)
@@ -32,5 +46,5 @@ dependencies {
     // Version supplied by the host app's React Native Gradle plugin.
     implementation "com.facebook.react:react-android"
     // The native Meld SDK this wraps (kept in lockstep). Resolved from JitPack/Maven by the app.
-    implementation "io.meld:meldsdk:0.6.0"
+    implementation "io.meld:meldsdk:${meldSdkVersion}"
 }
