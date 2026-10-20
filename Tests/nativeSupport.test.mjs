@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canMountOrder, inspectCapabilities, inspectPresentationCapabilities } from '../src/nativeSupport.ts';
+import { canMountOrder, inspectCapabilities, inspectPresentationCapabilities, isNativeBridgeAvailable } from '../src/nativeSupport.ts';
 
 const declared = { id: 'synthetic', headlessPresentation: { surface: 'NATIVE_SDK', protocol: 'SYNTHETIC', version: 1 }, paymentActions: { version: 1 } };
 const caps = { embeddable: false, surface: 'native-sdk', requiresUserGesture: true };
@@ -134,4 +134,37 @@ test('preflight success cannot bypass subsequent order inspection', async () => 
     async capabilities() { return unsupported; } };
   assert.equal((await inspectPresentationCapabilities('APPLE_PAY', presentation, bridge)).surface, 'native-sdk');
   assert.deepEqual(await inspectCapabilities(declared, bridge), unsupported);
+});
+
+const googlePay = { surface: 'PROVIDER_HOSTED', protocol: 'COINBASE_PAYMENT_LINK', version: 1 };
+const googlePayOrder = { id: 'synthetic', paymentMethodType: 'GOOGLE_PAY', headlessPresentation: googlePay,
+  paymentMethodResponseDetails: { paymentLinkUrl: 'https://pay.coinbase.com/synthetic' } };
+const wallet = { embeddable: false, surface: 'native-wallet', requiresUserGesture: true };
+
+test('the native module is available on iOS and Android only, and only with a capabilities method', () => {
+  const bridge = { capabilities() {} };
+  for (const platform of ['ios', 'android']) assert.equal(isNativeBridgeAvailable(platform, bridge), true);
+  for (const platform of ['web', 'windows', 'macos']) assert.equal(isNativeBridgeAvailable(platform, bridge), false);
+  for (const missing of [null, undefined, {}, { capabilities: true }]) {
+    assert.equal(isNativeBridgeAvailable('android', missing), false);
+  }
+});
+
+test('a registry bridge receives a declared Google Pay order and its quote descriptor', async () => {
+  const bridge = { headlessProtocolVersion: 1,
+    async presentationCapabilities(method, value) { assert.equal(method, 'GOOGLE_PAY'); assert.equal(value, googlePay); return wallet; },
+    async capabilities(order) { assert.equal(order, googlePayOrder); return wallet; } };
+  assert.equal(canMountOrder(googlePayOrder, bridge), true);
+  assert.deepEqual(await inspectCapabilities(googlePayOrder, bridge), wallet);
+  assert.deepEqual(await inspectPresentationCapabilities('GOOGLE_PAY', googlePay, bridge), wallet);
+});
+
+test('a bridge without the registry refuses Google Pay before reaching native code', async () => {
+  for (const headlessProtocolVersion of [undefined, 0]) {
+    const bridge = { headlessProtocolVersion, capabilities() { assert.fail('Must not reach old native code'); },
+      presentationCapabilities() { assert.fail('Must not reach old native code'); } };
+    assert.equal(canMountOrder(googlePayOrder, bridge), false);
+    assert.equal((await inspectCapabilities(googlePayOrder, bridge)).surface, 'unsupported');
+    assert.equal((await inspectPresentationCapabilities('GOOGLE_PAY', googlePay, bridge)).surface, 'unsupported');
+  }
 });

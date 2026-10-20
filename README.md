@@ -42,6 +42,20 @@ Nothing to wire up beyond autolinking: the wrapper's Gradle module pulls in the 
 projects. `minSdk 24`+. The Android SDK declares the `INTERNET` and `CAMERA` permissions (camera is
 used for in-widget KYC); they merge into your app automatically.
 
+This release requires **io.meld:meldsdk 0.7.0** for protocol dispatch. To build against an
+unreleased native checkout instead, publish it to Maven Local and pass the same version to the app
+build:
+
+```bash
+# in meldsdk-android
+./gradlew :meldsdk:publishToMavenLocal -PmeldsdkVersion=0.7.0-local
+# in the app's android/ directory (or export ORG_GRADLE_PROJECT_meldSdkVersion=0.7.0-local)
+./gradlew :app:assembleDebug -PmeldSdkVersion=0.7.0-local
+```
+
+The override searches Maven Local for the `io.meld` group only. Without it the wrapper resolves
+the published version.
+
 > The wrapper uses RN's legacy (Paper) view/module APIs, which run on the **New Architecture via
 > RN's interop layer** — the default on RN 0.85. No extra configuration is needed; `USE_FRAMEWORKS=static`
 > is required only because `MeldSDK` is a Swift pod.
@@ -72,15 +86,20 @@ Guard before rendering: `if ((await Meld.capabilities(order)).surface !== 'unsup
 a visible area; it does not indicate whether a native sheet is supported. Keep the complete order
 response, including `headlessPresentation` and `paymentActions`, and pass it through unchanged.
 
-Declared protocols also depend on the installed native bridge. A bridge without MeldSDK 0.8's
-protocol registry (Android today, or an older iOS binary running this JavaScript through an OTA
-update) still mounts the version 1 declarations its native dispatch already presents:
-`MERCURYO_WIDGET`, `UPHOLD_WIDGET` and `BANXA_CHECKOUT` cards, plus `BANXA_CHECKOUT`,
-`COINBASE_APPLE_PAY` and `MELD_WALLET_TOKEN` Apple Pay on iOS. An older iOS binary presents
-`MELD_WALLET_TOKEN` through its historical path, which needs `walletAddress` and `clientIpAddress`.
-For any other declaration, such as `STRIPE_CRYPTO_ONRAMP`, capabilities report `unsupported` and
-the component emits `UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. Those need a new iOS
+Declared protocols also depend on the installed native bridge. A bridge without a protocol
+registry (an iOS binary before MeldSDK 0.8 or an Android binary before io.meld:meldsdk 0.7.0,
+including one running this JavaScript through an OTA update) still mounts the version 1
+declarations its native dispatch already presents: `MERCURYO_WIDGET`, `UPHOLD_WIDGET` and
+`BANXA_CHECKOUT` cards, plus `BANXA_CHECKOUT`, `COINBASE_APPLE_PAY` and `MELD_WALLET_TOKEN` Apple
+Pay on iOS. An older iOS binary presents `MELD_WALLET_TOKEN` through its historical path, which
+needs `walletAddress` and `clientIpAddress`. For any other declaration, such as
+`STRIPE_CRYPTO_ONRAMP` or Coinbase `GOOGLE_PAY`, capabilities report `unsupported` and the
+component emits `UNSUPPORTED_NATIVE_PROTOCOL` without mounting native UI. Those need a new native
 app build.
+
+On Android the registry presents version 1 `MERCURYO_WIDGET`, `UPHOLD_WIDGET` and `BANXA_CHECKOUT`
+cards, and `GOOGLE_PAY` on `PROVIDER_HOSTED` with `COINBASE_PAYMENT_LINK`. It declines every Apple
+Pay protocol.
 
 ### Check a quote before creating an order
 
@@ -93,14 +112,15 @@ if (caps.surface === 'unsupported') return;
 
 The check consults the running native app's adapter registry with the exact payment method,
 surface, protocol and version. It makes no provider request and needs no order or credentials.
-An older bridge without this method (and Android today) returns `unsupported`, including when
-new JavaScript arrives through an OTA update. Unknown or malformed declarations also fail closed.
+An older bridge without this method (iOS before MeldSDK 0.8, Android before io.meld:meldsdk
+0.7.0) returns `unsupported`, including when new JavaScript arrives through an OTA update. Unknown
+or malformed declarations also fail closed.
 
 This is advisory SDK support. Continue checking server requirements, route eligibility and device
 Apple Pay readiness, then call `Meld.capabilities(order)` on the complete create response before
 mounting. Preflight does not authorize an order, satisfy legal requirements or guarantee a payable
-order. `embeddable: false` is valid for a supported native sheet. This API requires MeldSDK 0.8
-or later.
+order. `embeddable: false` is valid for a supported native sheet. This API requires MeldSDK 0.8 on
+iOS or io.meld:meldsdk 0.7.0 on Android, or later.
 
 ### Apple Pay
 

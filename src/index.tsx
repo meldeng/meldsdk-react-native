@@ -1,6 +1,9 @@
 import React from 'react';
 import { requireNativeComponent, NativeModules, Platform, type ViewStyle } from 'react-native';
-import { canMountOrder, inspectCapabilities, inspectPresentationCapabilities, type MeldHeadlessPresentation } from './nativeSupport';
+import {
+  canMountOrder, inspectCapabilities, inspectPresentationCapabilities, isNativeBridgeAvailable,
+  type MeldHeadlessPresentation,
+} from './nativeSupport';
 
 export type { MeldHeadlessPresentation } from './nativeSupport';
 
@@ -53,9 +56,10 @@ export const Meld = {
    * Not the same question as "is this iOS": a JavaScript-only over-the-air update can ship code
    * that calls the SDK ahead of the native build that contains it. Gate on this before offering a
    * payment surface, so an app on an older binary falls back instead of rendering something that
-   * cannot work.
+   * cannot work. True on iOS and Android alike: it does not promise support for any payment
+   * method, so check `presentationCapabilities` and then `capabilities(order)`.
    */
-  isNativeModuleAvailable: Platform.OS === 'ios' && NativeModules.MeldModule != null,
+  isNativeModuleAvailable: isNativeBridgeAvailable(Platform.OS, NativeModules.MeldModule),
 
   /**
    * One-time setup. Mirrors `Meld.configure(environment:)` on native.
