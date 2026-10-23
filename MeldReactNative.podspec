@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
 
   # The React Native host, and the native Meld SDK this wraps (kept in lockstep).
   s.dependency 'React-Core'
-  # 0.8 introduces declared protocol dispatch, shared payment actions and native Stripe execution.
-  # An existing 0.7 lock must not keep the legacy resolver behind this wrapper's new contract.
-  s.dependency 'MeldSDK', '~> 0.8'
+  # 0.10 adds the readiness checks the bridge calls and removes canPresentApplePay. Neither a 0.8 or
+  # 0.9 lock nor a later minor, which may remove API again, may satisfy this dependency.
+  s.dependency 'MeldSDK', '~> 0.10.0'
 end

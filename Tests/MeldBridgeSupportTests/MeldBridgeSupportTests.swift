@@ -201,4 +201,34 @@ final class MeldBridgeSupportTests: XCTestCase {
         }
         XCTAssertEqual(mounted, 1, "rebuilding applePay must not restart a card form")
     }
+
+    func testAnErrorCarriesTheOrdersPaymentMethodOnlyWhenItHasOne() {
+        let named = MeldErrorEvent.payload(orderId: "synthetic-order", code: "PAYMENT_METHOD_UNAVAILABLE",
+                                           message: "Unavailable", detail: nil, recoverable: false, paymentMethodType: "APPLE_PAY")
+        XCTAssertEqual(named as NSDictionary, ["orderId": "synthetic-order", "code": "PAYMENT_METHOD_UNAVAILABLE",
+                                               "message": "Unavailable", "detail": "", "recoverable": false,
+                                               "paymentMethodType": "APPLE_PAY"] as NSDictionary)
+        for missing in [nil, ""] as [String?] {
+            let unnamed = MeldErrorEvent.payload(orderId: nil, code: "MOUNT_FAILED", message: "Failed", detail: "x",
+                                                 recoverable: false, paymentMethodType: missing)
+            XCTAssertNil(unnamed["paymentMethodType"])
+            XCTAssertEqual(unnamed["orderId"] as? String, "")
+            XCTAssertEqual(unnamed["detail"] as? String, "x")
+        }
+    }
+
+    func testAReadinessAnswerNamesItsExplanationReason() {
+        XCTAssertEqual(MeldReadinessEvent.ready as NSDictionary, ["status": "ready"] as NSDictionary)
+        XCTAssertEqual(MeldReadinessEvent.unavailable(code: "PAYMENT_METHOD_UNAVAILABLE", reason: "No card.") as NSDictionary,
+                       ["status": "unavailable", "code": "PAYMENT_METHOD_UNAVAILABLE", "reason": "No card."] as NSDictionary)
+        XCTAssertEqual(MeldReadinessEvent.unknown(reason: "No answer.") as NSDictionary,
+                       ["status": "unknown", "reason": "No answer."] as NSDictionary)
+    }
+
+    func testTheBridgeNamesTheOrderPropsPaymentMethodWhenItIsAString() {
+        XCTAssertEqual(MeldErrorEvent.paymentMethodType(of: ["paymentMethodType": "GOOGLE_PAY"]), "GOOGLE_PAY")
+        for order: NSDictionary? in [nil, [:], ["paymentMethodType": ""], ["paymentMethodType": 1], ["paymentMethodType": NSNull()]] {
+            XCTAssertNil(MeldErrorEvent.paymentMethodType(of: order))
+        }
+    }
 }

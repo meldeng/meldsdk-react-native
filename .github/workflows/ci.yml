@@ -88,9 +88,9 @@ jobs:
           npm install
           npm install "${{ steps.pack.outputs.tgz }}"
 
-      - name: assembleDebug
+      - name: Bridge unit tests and assembleDebug
         working-directory: example/android
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :meldcrypto_react-native-sdk:testDebugUnitTest :app:assembleDebug
 
   ios:
     name: Build example (iOS)

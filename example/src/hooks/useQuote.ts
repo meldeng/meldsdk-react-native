@@ -1,6 +1,23 @@
 import { useEffect, useState } from 'react';
+import { Meld } from '@meldcrypto/react-native-sdk';
 import { CONFIG } from '../config';
 import { fetchQuotes, type PaymentMethodType, type Quote } from '../api/meld';
+
+// Ask the SDK whether this device can pay with each quote row before offering it, rather than
+// showing a provider whose sheet could never open. 'unknown' rows are still offered.
+export async function presentable(quotes: Quote[]): Promise<Quote[]> {
+  const offered = await Promise.all(
+    quotes.map(async (q) => {
+      if (!q.paymentMethodType || !q.headlessPresentation) return true;
+      const readiness = await Meld.presentationReadiness({
+        paymentMethodType: q.paymentMethodType,
+        headlessPresentation: q.headlessPresentation,
+      });
+      return readiness.status !== 'unavailable';
+    }),
+  );
+  return quotes.filter((_, i) => offered[i]);
+}
 
 export interface QuotesState {
   quotes: Quote[];
@@ -29,11 +46,14 @@ export function useQuotes(
         return;
       }
       try {
-        const q = await fetchQuotes(paymentMethodType);
+        const all = await fetchQuotes(paymentMethodType);
+        const q = await presentable(all);
+        const hidden = all.length - q.length;
         setQuotes(q);
         setNote(
           `${q.length} provider${q.length === 1 ? '' : 's'}: ` +
-            q.map((x) => x.serviceProvider).join(', '),
+            q.map((x) => x.serviceProvider).join(', ') +
+            (hidden ? ` (${hidden} not available on this device)` : ''),
         );
       } catch (e: any) {
         setNote(`quote failed: ${e.message}`);

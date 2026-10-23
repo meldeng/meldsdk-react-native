@@ -1,5 +1,6 @@
 import {
   type MeldApplePayRequest,
+  type MeldHeadlessPresentation,
   type MeldOrder,
 } from '@meldcrypto/react-native-sdk';
 import { CONFIG, ORDER } from '../config';
@@ -16,6 +17,9 @@ export interface CreatedOrder {
 
 export interface Quote {
   serviceProvider: string;
+  paymentMethodType?: string;
+  /** How the order would be presented; the SDK checks it before the order exists. */
+  headlessPresentation?: MeldHeadlessPresentation;
   destinationAmount?: number;
   totalFee?: number;
   exchangeRate?: number;

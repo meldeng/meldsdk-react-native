@@ -23,9 +23,9 @@ export interface CheckoutScreenProps {
   note: string;
   busy: boolean;
   error: string;
+  paymentMethods: PaymentMethodType[];
   paymentMethod: PaymentMethodType;
   onSelectPaymentMethod: (m: PaymentMethodType) => void;
-  applePayAvailable: boolean;
   onBuy: () => void;
 }
 
@@ -42,9 +42,9 @@ export function CheckoutScreen(props: CheckoutScreenProps) {
     note,
     busy,
     error,
+    paymentMethods,
     paymentMethod,
     onSelectPaymentMethod,
-    applePayAvailable,
     onBuy,
   } = props;
   const buyDisabled = busy || !wallet.trim() || !selectedProvider;
@@ -139,29 +139,20 @@ export function CheckoutScreen(props: CheckoutScreenProps) {
               chosen provider turns out to use for it. */}
           <Text style={styles.fieldLabel}>Payment method</Text>
           <View style={styles.methodRow}>
-            {(['CREDIT_DEBIT_CARD', 'APPLE_PAY'] as PaymentMethodType[]).map((m) => {
-              const disabled = m === 'APPLE_PAY' && !applePayAvailable;
-              return (
-                <Text
-                  key={m}
-                  accessibilityRole="button"
-                  onPress={() => !disabled && onSelectPaymentMethod(m)}
-                  style={[
-                    styles.methodPill,
-                    paymentMethod === m && styles.methodPillOn,
-                    disabled && styles.methodPillOff,
-                  ]}
-                >
-                  {m === 'APPLE_PAY' ? ' Pay' : 'Card'}
-                </Text>
-              );
-            })}
+            {paymentMethods.map((m) => (
+              <Text
+                key={m}
+                accessibilityRole="button"
+                onPress={() => onSelectPaymentMethod(m)}
+                style={[
+                  styles.methodPill,
+                  paymentMethod === m && styles.methodPillOn,
+                ]}
+              >
+                {m === 'APPLE_PAY' ? ' Pay' : 'Card'}
+              </Text>
+            ))}
           </View>
-          {!applePayAvailable ? (
-            <Text style={styles.methodHint}>
-              Apple Pay needs a real device with a card in Wallet.
-            </Text>
-          ) : null}
 
           {/* choose a provider */}
           <Text style={styles.fieldLabel}>Choose a provider</Text>
@@ -276,8 +267,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   methodPillOn: { borderColor: '#111', fontWeight: '600' },
-  methodPillOff: { opacity: 0.4 },
-  methodHint: { fontSize: 12, color: '#777', marginBottom: 10 },
   flex1: { flex: 1 },
 
   // page + card

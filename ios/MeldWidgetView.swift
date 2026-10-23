@@ -135,19 +135,15 @@ final class MeldWidgetView: UIView {
         event(self)
     }
 
-    /// Forwards a native `MeldError` to JS, including `detail` for parity with the native struct.
+    /// Forwards a native `MeldError` to JS, including `detail` and `paymentMethodType` for parity with the native struct.
     private func send(error e: MeldError) {
-        onError?([
-            "orderId": e.orderId ?? "",
-            "code": e.code,
-            "message": e.message,
-            "detail": e.detail ?? "",
-            "recoverable": e.recoverable,
-        ])
+        onError?(MeldErrorEvent.payload(orderId: e.orderId, code: e.code, message: e.message, detail: e.detail,
+                                        recoverable: e.recoverable, paymentMethodType: e.paymentMethodType))
     }
 
     private func emitError(code: String, message: String) {
-        send(error: MeldError(orderId: nil, code: code, message: message, recoverable: false))
+        send(error: MeldError(orderId: nil, code: code, message: message, recoverable: false,
+                              paymentMethodType: MeldErrorEvent.paymentMethodType(of: order)))
     }
 
     override func removeFromSuperview() {

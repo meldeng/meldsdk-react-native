@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canMountOrder, inspectCapabilities, inspectPresentationCapabilities, isNativeBridgeAvailable } from '../src/nativeSupport.ts';
+import {
+  canMountOrder, inspectCapabilities, inspectPaymentMethodReadiness, inspectPresentationCapabilities, inspectPresentationReadiness,
+  isNativeBridgeAvailable, presentationOf,
+} from '../src/nativeSupport.ts';
 
 const declared = { id: 'synthetic', headlessPresentation: { surface: 'NATIVE_SDK', protocol: 'SYNTHETIC', version: 1 }, paymentActions: { version: 1 } };
 const caps = { embeddable: false, surface: 'native-sdk', requiresUserGesture: true };
@@ -166,5 +169,161 @@ test('a bridge without the registry refuses Google Pay before reaching native co
     assert.equal(canMountOrder(googlePayOrder, bridge), false);
     assert.equal((await inspectCapabilities(googlePayOrder, bridge)).surface, 'unsupported');
     assert.equal((await inspectPresentationCapabilities('GOOGLE_PAY', googlePay, bridge)).surface, 'unsupported');
+  }
+});
+
+const row = { paymentMethodType: 'GOOGLE_PAY', headlessPresentation: googlePay, serviceProvider: 'SYNTHETIC', sourceAmount: 10 };
+const noDeviceCheck = 'This payment method has no device check; offer it and let the payment decide.';
+
+test('a quote row and the positional form name the same method and descriptor', async () => {
+  assert.deepEqual(presentationOf(row), ['GOOGLE_PAY', googlePay]);
+  assert.deepEqual(presentationOf(row, presentation), ['GOOGLE_PAY', googlePay]);
+  assert.deepEqual(presentationOf('GOOGLE_PAY', googlePay), ['GOOGLE_PAY', googlePay]);
+  assert.deepEqual(presentationOf(null, googlePay), [null, googlePay]);
+  const bridge = { headlessProtocolVersion: 1, async presentationCapabilities(...args) {
+    assert.equal(args.length, 2); assert.equal(args[0], 'GOOGLE_PAY'); assert.equal(args[1], googlePay); return wallet;
+  } };
+  assert.deepEqual(await inspectPresentationCapabilities(...presentationOf(row), bridge), wallet);
+  for (const malformed of [{}, { paymentMethodType: 'GOOGLE_PAY' }, { ...row, headlessPresentation: null },
+    { ...row, paymentMethodType: 'google_pay' }]) {
+    const refusing = { headlessProtocolVersion: 1, presentationCapabilities() { assert.fail('Malformed row'); } };
+    assert.equal((await inspectPresentationCapabilities(...presentationOf(malformed), refusing)).surface, 'unsupported');
+  }
+});
+
+test('readiness forwards only the row\'s method and descriptor and keeps the native answer', async () => {
+  for (const [answer, expected] of [
+    [{ status: 'ready' }, { status: 'ready' }],
+    [{ status: 'ready', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'ignored' }, { status: 'ready' }],
+    [{ status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'No card.' },
+      { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'No card.' }],
+    [{ status: 'unknown', reason: 'No answer within 5000 ms.' }, { status: 'unknown', reason: 'No answer within 5000 ms.' }],
+    [{ status: 'unknown', reason: '' }, { status: 'unknown' }],
+    [{ status: 'unknown', reason: 42 }, { status: 'unknown' }],
+    [{ status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', detail: 'No card.' },
+      { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE' }],
+    [{ status: 'unknown', detail: 'No answer within 5000 ms.' }, { status: 'unknown' }],
+  ]) {
+    const bridge = { headlessProtocolVersion: 1, async presentationReadiness(...args) {
+      assert.equal(args.length, 2); assert.equal(args[0], 'GOOGLE_PAY'); assert.equal(args[1], googlePay); return answer;
+    }, presentationCapabilities() { assert.fail('The native check answers on its own'); } };
+    assert.deepEqual(await inspectPresentationReadiness(row, bridge), expected);
+  }
+});
+
+test('a malformed or failed native readiness answer is unknown, and unavailable always has a code', async () => {
+  for (const answer of [null, undefined, true, 'ready', {}, { status: 'READY' }, { status: 'maybe' }]) {
+    const bridge = { headlessProtocolVersion: 1, async presentationReadiness() { return answer; } };
+    assert.equal((await inspectPresentationReadiness(row, bridge)).status, 'unknown');
+  }
+  const rejecting = { headlessProtocolVersion: 1, async presentationReadiness() { throw new Error('native failure'); } };
+  assert.deepEqual(await inspectPresentationReadiness(row, rejecting), { status: 'unknown', reason: 'The readiness check failed.' });
+  for (const code of [undefined, '', 'lower', 42]) {
+    const bridge = { headlessProtocolVersion: 1, async presentationReadiness() { return { status: 'unavailable', code }; } };
+    assert.deepEqual(await inspectPresentationReadiness(row, bridge), { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE' });
+  }
+});
+
+test('a malformed row is unavailable and never crosses the bridge', async () => {
+  const bridge = { headlessProtocolVersion: 1, presentationReadiness() { assert.fail('Malformed row'); },
+    presentationCapabilities() { assert.fail('Malformed row'); } };
+  for (const malformed of [null, undefined, 'GOOGLE_PAY', {}, { paymentMethodType: 'GOOGLE_PAY' },
+    { ...row, headlessPresentation: null }, { ...row, headlessPresentation: { ...googlePay, version: '1' } },
+    { ...row, paymentMethodType: 'google_pay' }, { ...row, paymentMethodType: 'GOOGLE_PAY\n' }]) {
+    const answer = await inspectPresentationReadiness(malformed, bridge);
+    assert.equal(answer.status, 'unavailable');
+    assert.equal(answer.code, 'PAYMENT_METHOD_UNAVAILABLE');
+  }
+});
+
+test('a binary without the registry is unavailable for every row', async () => {
+  for (const headlessProtocolVersion of [undefined, null, 0, 2, '1', true]) {
+    const bridge = { headlessProtocolVersion, presentationReadiness() { assert.fail('Old native bridge'); },
+      presentationCapabilities() { assert.fail('Old native bridge'); } };
+    const answer = await inspectPresentationReadiness(row, bridge);
+    assert.equal(answer.status, 'unavailable');
+    assert.equal(answer.code, 'PAYMENT_METHOD_UNAVAILABLE');
+  }
+  for (const missing of [null, undefined, {}]) {
+    assert.equal((await inspectPresentationReadiness(row, missing)).status, 'unavailable');
+  }
+});
+
+test('a registry binary without the readiness check answers from presentation support', async () => {
+  const applePay = { paymentMethodType: 'APPLE_PAY', headlessPresentation: { surface: 'NATIVE_SDK', protocol: 'STRIPE_CRYPTO_ONRAMP', version: 1 } };
+  const supported = { embeddable: false, surface: 'native-applepay', requiresUserGesture: true };
+  const unsupportedCaps = { embeddable: false, surface: 'unsupported', requiresUserGesture: false };
+  const bridge = (caps) => ({ headlessProtocolVersion: 1, async presentationCapabilities() { return caps; },
+    canPresentApplePay() { assert.fail('Removed in 0.10.0'); } });
+
+  const refused = await inspectPresentationReadiness(applePay, bridge(unsupportedCaps));
+  assert.equal(refused.status, 'unavailable');
+  assert.equal(refused.code, 'PAYMENT_METHOD_UNAVAILABLE');
+  assert.deepEqual(await inspectPresentationReadiness(applePay, bridge(supported)),
+    { status: 'unknown', reason: noDeviceCheck });
+  assert.equal((await inspectPresentationReadiness(row, bridge(wallet))).status, 'unknown');
+  const failing = { headlessProtocolVersion: 1, async presentationCapabilities() { throw new Error('native failure'); } };
+  assert.deepEqual(await inspectPresentationReadiness(applePay, failing), { status: 'unknown', reason: 'The readiness check failed.' });
+});
+
+test('device readiness forwards only the method and keeps the native answer', async () => {
+  for (const [answer, expected] of [
+    [{ status: 'ready' }, { status: 'ready' }],
+    [{ status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'Google Pay is not available on iOS.' },
+      { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'Google Pay is not available on iOS.' }],
+    [{ status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'Google Pay has no usable card on this device.' },
+      { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'Google Pay has no usable card on this device.' }],
+    [{ status: 'unavailable' }, { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE' }],
+    [{ status: 'unknown', reason: noDeviceCheck }, { status: 'unknown', reason: noDeviceCheck }],
+    [{ status: 'maybe' }, { status: 'unknown', reason: 'The native readiness answer was malformed.' }],
+  ]) {
+    for (const platform of ['ios', 'android']) {
+      const bridge = { async paymentMethodReadiness(...args) {
+        assert.deepEqual(args, ['GOOGLE_PAY']); return answer;
+      }, presentationReadiness() { assert.fail('No quote row exists yet'); } };
+      assert.deepEqual(await inspectPaymentMethodReadiness('GOOGLE_PAY', platform, bridge), expected);
+    }
+  }
+});
+
+test('device readiness asks the native SDK whatever the protocol version, and a failure is unknown', async () => {
+  for (const headlessProtocolVersion of [undefined, 0, 1]) {
+    const bridge = { headlessProtocolVersion, async paymentMethodReadiness() { return { status: 'ready' }; } };
+    assert.deepEqual(await inspectPaymentMethodReadiness('APPLE_PAY', 'ios', bridge), { status: 'ready' });
+  }
+  const rejecting = { async paymentMethodReadiness() { throw new Error('native failure'); } };
+  assert.deepEqual(await inspectPaymentMethodReadiness('APPLE_PAY', 'ios', rejecting),
+    { status: 'unknown', reason: 'The readiness check failed.' });
+});
+
+test('a malformed method is unknown and never crosses the bridge', async () => {
+  const bridge = { paymentMethodReadiness() { assert.fail('Malformed method'); } };
+  for (const method of [null, undefined, true, 42, {}, '', 'apple_pay', 'APPLE_PAY ', 'APPLE_PAY\n', 'A'.repeat(65)]) {
+    assert.deepEqual(await inspectPaymentMethodReadiness(method, 'ios', bridge),
+      { status: 'unknown', reason: 'The paymentMethodType is malformed.' });
+  }
+});
+
+test('a binary without the device check rules out only the other platform\'s wallet', async () => {
+  const noCheck = { status: 'unknown', reason: noDeviceCheck };
+  const oldBridge = { headlessProtocolVersion: 1, async capabilities() {}, presentationReadiness() { assert.fail('Not a row'); } };
+  for (const bridge of [oldBridge, {}, null, undefined]) {
+    assert.deepEqual(await inspectPaymentMethodReadiness('APPLE_PAY', 'android', bridge),
+      { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'Apple Pay is not available on Android.' });
+    assert.deepEqual(await inspectPaymentMethodReadiness('GOOGLE_PAY', 'ios', bridge),
+      { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: 'Google Pay is not available on iOS.' });
+    assert.deepEqual(await inspectPaymentMethodReadiness('APPLE_PAY', 'ios', bridge), noCheck);
+    assert.deepEqual(await inspectPaymentMethodReadiness('GOOGLE_PAY', 'android', bridge), noCheck);
+    for (const method of ['CREDIT_DEBIT_CARD', 'SEPA', 'FUTURE_METHOD']) {
+      for (const platform of ['ios', 'android', 'web']) {
+        assert.deepEqual(await inspectPaymentMethodReadiness(method, platform, bridge), noCheck);
+      }
+    }
+    for (const [method, name] of [['APPLE_PAY', 'Apple Pay'], ['GOOGLE_PAY', 'Google Pay']]) {
+      assert.deepEqual(await inspectPaymentMethodReadiness(method, 'web', bridge),
+        { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason: `${name} is not available on the web.` });
+      assert.equal((await inspectPaymentMethodReadiness(method, 'windows', bridge)).reason,
+        `${name} is not available on windows.`);
+    }
   }
 });

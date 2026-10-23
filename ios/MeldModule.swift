@@ -20,14 +20,6 @@ final class MeldModule: NSObject {
         Meld.configure(environment: parsed)
     }
 
-    /// Whether this device and user can pay with Apple Pay right now — a provisioned card and no
-    /// restriction. Check before offering the option; `canMakePayments()` alone would be true on a
-    /// device with an empty Wallet.
-    @objc func canPresentApplePay(_ resolve: @escaping RCTPromiseResolveBlock,
-                                  rejecter reject: @escaping RCTPromiseRejectBlock) {
-        resolve(Meld.canPresentApplePay())
-    }
-
     /// Inspect an order before rendering the widget — bridges to `Meld.capabilities(for:)`.
     @objc func capabilities(_ order: NSDictionary,
                             resolver resolve: @escaping RCTPromiseResolveBlock,
@@ -61,5 +53,37 @@ final class MeldModule: NSObject {
             "surface": caps.surface,
             "requiresUserGesture": caps.requiresUserGesture,
         ])
+    }
+
+    /// Device readiness for a payment method before any quote, from the native SDK; no order or network request.
+    @objc func paymentMethodReadiness(_ paymentMethodType: NSString,
+                                      resolver resolve: @escaping RCTPromiseResolveBlock,
+                                      rejecter reject: @escaping RCTPromiseRejectBlock) {
+        Meld.paymentMethodReadiness(paymentMethodType as String) { resolve(Self.payload($0)) }
+    }
+
+    /// Device readiness for a quote row's method, from the native SDK; no order or network request.
+    @objc func presentationReadiness(_ paymentMethodType: NSString,
+                                     presentation: NSDictionary,
+                                     resolver resolve: @escaping RCTPromiseResolveBlock,
+                                     rejecter reject: @escaping RCTPromiseRejectBlock) {
+        guard let json = presentation as? [String: Any],
+              let descriptor = MeldHeadlessPresentation(json: json) else {
+            resolve(MeldReadinessEvent.unavailable(code: MeldErrorCode.paymentMethodUnavailable,
+                                                   reason: "The headlessPresentation is malformed."))
+            return
+        }
+        Meld.presentationReadiness(descriptor, paymentMethodType: paymentMethodType as String) { resolve(Self.payload($0)) }
+    }
+
+    private static func payload(_ readiness: MeldReadiness) -> [String: Any] {
+        switch readiness {
+        case .ready:
+            return MeldReadinessEvent.ready
+        case let .unavailable(code, reason):
+            return MeldReadinessEvent.unavailable(code: code, reason: reason)
+        case let .unknown(reason):
+            return MeldReadinessEvent.unknown(reason: reason)
+        }
     }
 }

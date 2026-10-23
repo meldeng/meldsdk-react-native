@@ -9,7 +9,7 @@ def safeExtGet = { prop, fallback -> rootProject.ext.has(prop) ? rootProject.ext
 // `-PmeldSdkVersion=<v>` (or `rootProject.ext.meldSdkVersion`) builds against an unreleased native
 // SDK published with its `publishToMavenLocal`; Maven Local is then searched for io.meld only.
 def meldSdkOverride = findProperty("meldSdkVersion") ?: safeExtGet("meldSdkVersion", null)
-def meldSdkVersion = meldSdkOverride ?: "0.7.0"
+def meldSdkVersion = meldSdkOverride ?: "0.8.0"
 if (meldSdkOverride != null) {
     rootProject.allprojects {
         repositories {
@@ -47,4 +47,6 @@ dependencies {
     implementation "com.facebook.react:react-android"
     // The native Meld SDK this wraps (kept in lockstep). Resolved from JitPack/Maven by the app.
     implementation "io.meld:meldsdk:${meldSdkVersion}"
+
+    testImplementation "junit:junit:4.13.2"
 }
