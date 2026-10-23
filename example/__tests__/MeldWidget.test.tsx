@@ -35,6 +35,7 @@ test('an older native binary gets one error and no mounted UI', async () => {
     message: 'This app build does not support the order presentation. Update the native app.',
     recoverable: false,
   });
+  expect(onError.mock.calls[0][0]).not.toHaveProperty('paymentMethodType');
   await act(async () => {
     rendered.update(<MeldWidget order={order} onError={replacementHandler} />);
   });
@@ -97,5 +98,29 @@ test('a bridge without the registry refuses a registry-only protocol before moun
   expect(rendered.toJSON()).toBeNull();
   expect(onError).toHaveBeenCalledTimes(1);
   expect(onError.mock.calls[0][0].code).toBe('UNSUPPORTED_NATIVE_PROTOCOL');
+  expect(onError.mock.calls[0][0].paymentMethodType).toBe('APPLE_PAY');
+  await act(async () => rendered.unmount());
+});
+
+test('a native error reaches onError with the order\'s payment method', async () => {
+  NativeModules.MeldModule.headlessProtocolVersion = 1;
+  const onError = jest.fn();
+  let rendered!: ReactTestRenderer.ReactTestRenderer;
+  await act(async () => {
+    rendered = ReactTestRenderer.create(
+      <MeldWidget order={{...order, paymentMethodType: 'GOOGLE_PAY'}} onError={onError} />,
+    );
+  });
+  const native = rendered.root.find(node => node.type === 'MockMeldWidget');
+  const error = {
+    orderId: order.id,
+    code: 'PAYMENT_METHOD_UNAVAILABLE',
+    message: 'Google Pay is not available.',
+    detail: '',
+    recoverable: false,
+    paymentMethodType: 'GOOGLE_PAY',
+  };
+  native.props.onError({nativeEvent: error});
+  expect(onError).toHaveBeenCalledWith(error);
   await act(async () => rendered.unmount());
 });

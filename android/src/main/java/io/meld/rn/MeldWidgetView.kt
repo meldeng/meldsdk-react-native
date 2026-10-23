@@ -18,96 +18,89 @@ import io.meld.sdk.MeldWidgetHandle
  */
 class MeldWidgetView(private val reactContext: ThemedReactContext) : FrameLayout(reactContext) {
 
-    private var handle: MeldWidgetHandle? = null
-    private var order: ReadableMap? = null
-    // Once dropped, ignore any late callback from the native SDK (parity with iOS's [weak self]:
-    // the handlers capture this view strongly, so a stray event after teardown must be a no-op).
-    private var released = false
+    // Callbacks from a mount that was replaced or unmounted are dropped (parity with iOS: the
+    // handlers capture this view strongly, so a stray event after teardown must be a no-op).
+    private val lifecycle = MeldMountLifecycle<MeldWidgetHandle> { it.unmount() }
 
-    /** The order JSON from JS. Mount once it arrives. */
+    /** The order JSON from JS. A different order ends the current mount and mounts the new one. */
     fun setOrder(order: ReadableMap?) {
-        this.order = order
-        mountIfNeeded()
-    }
-
-    private fun mountIfNeeded() {
-        if (handle != null) return
-        val order = order ?: return
+        if (order == null) return lifecycle.detach()
+        val inputs = order.toHashMap()
+        val paymentMethodType = paymentMethodTypeOf(inputs)
 
         // Parse failures must not be swallowed — surface them through onError so JS can react
-        // instead of staring at a blank view.
+        // instead of staring at a blank view. They are remembered like any failed attempt.
         val parsed: MeldOrder = try {
-            MeldOrder.fromMap(order.toHashMap())
+            MeldOrder.fromMap(inputs)
         } catch (e: Exception) {
-            emitError("INVALID_ORDER", "Could not parse the order JSON: ${e.message}")
+            lifecycle.mount(inputs, { throw e }, { generation, _ ->
+                emitError(generation, "INVALID_ORDER", "Could not parse the order JSON: ${e.message}", paymentMethodType)
+            })
             return
         }
 
-        try {
-            handle = Meld.mount(
-                parsed,
-                this,
-                MeldEventHandlers(
-                    onReady = { id -> emit("onReady", orderIdMap(id)) },
-                    onPaymentSubmitted = { id -> emit("onPaymentSubmitted", orderIdMap(id)) },
-                    onStatusChange = { e ->
-                        val payload = Arguments.createMap().apply {
-                            putString("orderId", e.orderId ?: "")
-                            putString("status", e.status.raw)
-                            putString("providerStatus", e.providerStatus ?: "")
-                        }
-                        // Forward the raw provider payload when it's a JSON-serializable map, for
-                        // parity with iOS (which guards with JSONSerialization.isValidJSONObject).
-                        // Non-string keys / non-bridgeable values would throw in makeNativeMap and
-                        // break event emission, so drop raw on failure rather than crash.
-                        (e.raw as? Map<*, *>)?.let { rawMap ->
-                            try {
-                                @Suppress("UNCHECKED_CAST")
-                                payload.putMap("raw", Arguments.makeNativeMap(rawMap as Map<String, Any?>))
-                            } catch (ignored: Exception) {
-                                // raw not bridge-serializable — omit it, same as iOS
-                            }
-                        }
-                        emit("onStatusChange", payload)
-                    },
-                    onCancel = { id -> emit("onCancel", orderIdMap(id)) },
-                    onError = { e -> emit("onError", errorMap(e)) },
-                ),
+        val embeddable = Meld.capabilities(parsed).embeddable
+        lifecycle.mount(inputs, { generation ->
+            val handlers = handlers(generation)
+            mountWhere(
+                embeddable,
+                reactContext.currentActivity,
+                { Meld.mount(parsed, this, handlers) },
+                { activity -> Meld.mount(parsed, activity, handlers) },
             )
-        } catch (e: Exception) {
+        }, { generation, e ->
             // Mount failures (unsupported order, missing widget URL) also surface via onError.
-            emitError("MOUNT_FAILED", e.message ?: "mount failed")
-        }
+            emitError(generation, "MOUNT_FAILED", e.message ?: "mount failed", paymentMethodType)
+        })
     }
 
     /** Tear down when RN drops the view (see MeldWidgetViewManager.onDropViewInstance). */
     fun unmount() {
-        released = true
-        handle?.unmount()
-        handle = null
+        lifecycle.detach()
     }
 
-    private fun emit(name: String, payload: WritableMap) {
-        // Ignore late callbacks after teardown (parity with iOS [weak self]). We deliberately do
-        // NOT gate on id == NO_ID: the first INVALID_ORDER/MOUNT_FAILED can be emitted synchronously
-        // during prop-set, and dropping it would reintroduce the silent blank-view failure.
-        if (released) return
+    private fun handlers(generation: Long) = MeldEventHandlers(
+        onReady = { id -> emit(generation, "onReady", orderIdMap(id)) },
+        onPaymentSubmitted = { id -> emit(generation, "onPaymentSubmitted", orderIdMap(id)) },
+        onStatusChange = { e ->
+            val payload = Arguments.createMap().apply {
+                putString("orderId", e.orderId ?: "")
+                putString("status", e.status.raw)
+                putString("providerStatus", e.providerStatus ?: "")
+            }
+            // Forward the raw provider payload when it's a JSON-serializable map, for
+            // parity with iOS (which guards with JSONSerialization.isValidJSONObject).
+            // Non-string keys / non-bridgeable values would throw in makeNativeMap and
+            // break event emission, so drop raw on failure rather than crash.
+            (e.raw as? Map<*, *>)?.let { rawMap ->
+                try {
+                    @Suppress("UNCHECKED_CAST")
+                    payload.putMap("raw", Arguments.makeNativeMap(rawMap as Map<String, Any?>))
+                } catch (ignored: Exception) {
+                    // raw not bridge-serializable — omit it, same as iOS
+                }
+            }
+            emit(generation, "onStatusChange", payload)
+        },
+        onCancel = { id -> emit(generation, "onCancel", orderIdMap(id)) },
+        onError = { e -> emit(generation, "onError", errorMap(e)) },
+    )
+
+    private fun emit(generation: Long, name: String, payload: WritableMap) {
+        // Ignore callbacks from a replaced or torn-down mount. We deliberately do NOT gate on
+        // id == NO_ID: the first INVALID_ORDER/MOUNT_FAILED can be emitted synchronously during
+        // prop-set, and dropping it would reintroduce the silent blank-view failure.
+        if (!lifecycle.isCurrent(generation)) return
         reactContext.getJSModule(RCTEventEmitter::class.java).receiveEvent(id, name, payload)
     }
 
-    private fun emitError(code: String, message: String) {
-        emit("onError", errorMap(MeldError(orderId = null, code = code, message = message, recoverable = false)))
+    private fun emitError(generation: Long, code: String, message: String, paymentMethodType: String?) {
+        val error = MeldError(orderId = null, code = code, message = message, recoverable = false, paymentMethodType = paymentMethodType)
+        emit(generation, "onError", errorMap(error))
     }
 
     private fun orderIdMap(id: String?): WritableMap =
         Arguments.createMap().apply { putString("orderId", id ?: "") }
 
-    private fun errorMap(e: MeldError): WritableMap =
-        Arguments.createMap().apply {
-            putString("orderId", e.orderId ?: "")
-            putString("code", e.code)
-            putString("message", e.message)
-            putString("detail", e.detail ?: "")
-            putBoolean("recoverable", e.recoverable)
-        }
+    private fun errorMap(e: MeldError): WritableMap = Arguments.makeNativeMap(errorEvent(e))
 }

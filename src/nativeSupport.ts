@@ -2,12 +2,27 @@ type Order = Record<string, unknown>;
 interface Bridge {
   capabilities?: (order: Order) => Promise<unknown>;
   presentationCapabilities?: (paymentMethodType: string, presentation: MeldHeadlessPresentation) => Promise<unknown>;
+  presentationReadiness?: (paymentMethodType: string, presentation: MeldHeadlessPresentation) => Promise<unknown>;
+  paymentMethodReadiness?: (paymentMethodType: string) => Promise<unknown>;
   headlessProtocolVersion?: unknown;
 }
 interface Capabilities { embeddable: boolean; surface: string; requiresUserGesture: boolean }
 
 /** Server-declared identifiers stay open so the installed native registry owns protocol support. */
 export interface MeldHeadlessPresentation { surface: string; protocol: string; version: number }
+
+/** The two fields of a quote row (or payment method) that name how it is presented. */
+export interface MeldPresentationRow { paymentMethodType: string; headlessPresentation: MeldHeadlessPresentation }
+
+/**
+ * Whether this device can pay with a quote row's method. `code` comes only with `unavailable` and
+ * uses the same terms a mounted order would; `reason` is for logging.
+ */
+export interface MeldReadiness {
+  status: 'ready' | 'unavailable' | 'unknown';
+  code?: string;
+  reason?: string;
+}
 
 const unsupported: Capabilities = { embeddable: false, surface: 'unsupported', requiresUserGesture: false };
 
@@ -46,13 +61,75 @@ export async function inspectCapabilities(order: Order, bridge?: Bridge | null):
   return parseCapabilities(value);
 }
 
+/** The method and descriptor named by a quote row, or by the positional form. */
+export function presentationOf(rowOrType: unknown, presentation?: unknown): [unknown, unknown] {
+  if (typeof rowOrType !== 'object' || rowOrType == null) return [rowOrType, presentation];
+  const row = rowOrType as Record<string, unknown>;
+  return [row.paymentMethodType, row.headlessPresentation];
+}
+
 /** Advisory quote support, never an order validation or authorization to create/pay. */
 export async function inspectPresentationCapabilities(
-  paymentMethodType: string, presentation: MeldHeadlessPresentation, bridge?: Bridge | null,
+  paymentMethodType: unknown, presentation: unknown, bridge?: Bridge | null,
 ): Promise<Capabilities> {
   if (bridge?.headlessProtocolVersion !== 1 || typeof bridge.presentationCapabilities !== 'function'
       || !identifier(paymentMethodType) || !validPresentation(presentation)) return { ...unsupported };
   return parseCapabilities(await bridge.presentationCapabilities(paymentMethodType, presentation));
+}
+
+/** The one platform that presents each wallet, and the wallet's name. */
+const wallets = new Map([
+  ['APPLE_PAY', { platform: 'ios', name: 'Apple Pay' }],
+  ['GOOGLE_PAY', { platform: 'android', name: 'Google Pay' }],
+]);
+const platformNames = new Map([['ios', 'iOS'], ['android', 'Android'], ['web', 'the web']]);
+
+/** The reason every Meld SDK gives for a method nothing on the device decides. */
+const noDeviceCheck = 'This payment method has no device check; offer it and let the payment decide.';
+
+/**
+ * Device readiness for a payment method before any quote, answered by the native SDK. A binary from
+ * before the native check answers `unavailable` for a wallet this platform never presents.
+ */
+export async function inspectPaymentMethodReadiness(
+  paymentMethodType: unknown, platform: string, bridge?: Bridge | null,
+): Promise<MeldReadiness> {
+  if (!identifier(paymentMethodType)) return { status: 'unknown', reason: 'The paymentMethodType is malformed.' };
+  if (typeof bridge?.paymentMethodReadiness === 'function') {
+    try {
+      return parseReadiness(await bridge.paymentMethodReadiness(paymentMethodType));
+    } catch {
+      return { status: 'unknown', reason: 'The readiness check failed.' };
+    }
+  }
+  const wallet = wallets.get(paymentMethodType);
+  if (wallet !== undefined && wallet.platform !== platform) {
+    return unavailable(`${wallet.name} is not available on ${platformNames.get(platform) ?? platform}.`);
+  }
+  return { status: 'unknown', reason: noDeviceCheck };
+}
+
+/**
+ * Device readiness for a quote row, answered by the native SDK. A binary from before the native
+ * check answers from presentation support.
+ */
+export async function inspectPresentationReadiness(row: unknown, bridge?: Bridge | null): Promise<MeldReadiness> {
+  const [paymentMethodType, presentation] = presentationOf(row);
+  if (!identifier(paymentMethodType) || !validPresentation(presentation)) {
+    return unavailable('The row has no well-formed paymentMethodType and headlessPresentation.');
+  }
+  const asked = `${paymentMethodType} via ${presentation.surface}/${presentation.protocol} v${presentation.version}`;
+  if (bridge?.headlessProtocolVersion !== 1) return unavailable(`This app build does not present ${asked}.`);
+  try {
+    if (typeof bridge.presentationReadiness === 'function') {
+      return parseReadiness(await bridge.presentationReadiness(paymentMethodType, presentation));
+    }
+    const caps = await inspectPresentationCapabilities(paymentMethodType, presentation, bridge);
+    if (caps.surface === 'unsupported') return unavailable(`This app build does not present ${asked}.`);
+    return { status: 'unknown', reason: noDeviceCheck };
+  } catch {
+    return { status: 'unknown', reason: 'The readiness check failed.' };
+  }
 }
 
 function validPresentation(value: unknown): value is MeldHeadlessPresentation {
@@ -64,6 +141,22 @@ function validPresentation(value: unknown): value is MeldHeadlessPresentation {
 
 function identifier(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 64 && /^[A-Z]/.test(value) && !/[^A-Z0-9_]/.test(value);
+}
+
+function unavailable(reason: string): MeldReadiness {
+  return { status: 'unavailable', code: 'PAYMENT_METHOD_UNAVAILABLE', reason };
+}
+
+function parseReadiness(value: unknown): MeldReadiness {
+  const result = (typeof value === 'object' && value != null ? value : {}) as Record<string, unknown>;
+  const reason = typeof result.reason === 'string' && result.reason ? { reason: result.reason } : {};
+  switch (result.status) {
+    case 'ready': return { status: 'ready' };
+    case 'unavailable':
+      return { status: 'unavailable', code: identifier(result.code) ? result.code : 'PAYMENT_METHOD_UNAVAILABLE', ...reason };
+    case 'unknown': return { status: 'unknown', ...reason };
+    default: return { status: 'unknown', reason: 'The native readiness answer was malformed.' };
+  }
 }
 
 function parseCapabilities(value: unknown): Capabilities {

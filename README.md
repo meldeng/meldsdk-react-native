@@ -23,13 +23,23 @@ to add to your `Podfile`. Just install with **static frameworks** (`MeldSDK` is 
 cd ios && USE_FRAMEWORKS=static pod install
 ```
 
-This release requires **MeldSDK 0.8** for protocol dispatch, shared payment actions and native Stripe
-execution. A Podfile.lock that still pins 0.7 must be updated (`pod update MeldSDK`). To test the
-example against a local native checkout instead of the published pod:
+This release (0.10.0) requires **MeldSDK 0.10.x** (`~> 0.10.0`) for the readiness checks, on top of
+the protocol dispatch, shared payment actions and native Stripe execution that 0.8 introduced. It
+does not compile against 0.9.
+
+**Before you upgrade, remove any MeldSDK pin of your own, or raise it to `~> 0.10.0`.** The wrapper's
+podspec already brings MeldSDK, so your app needs no pin. Look for a Podfile line such as
+`pod 'MeldSDK', '~> 0.9.0'`, and in Expo for an `expo-build-properties` entry such as
+`"extraPods": [{ "name": "MeldSDK", "version": "~> 0.9.0" }]` (prebuild again after changing it).
+`pod update MeldSDK` does not change an explicit pin, and while one excludes 0.10, `pod install`
+cannot find compatible versions for MeldSDK. Then update a Podfile.lock that still holds 0.8 or 0.9
+with `pod update MeldSDK`.
+
+To test the example against a local native checkout instead of the published pod:
 
 ```bash
 cd example/ios
-MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.8.0 USE_FRAMEWORKS=static pod install
+MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.10.0 USE_FRAMEWORKS=static pod install
 ```
 
 The override compiles the native SDK from source and does not relax the minimum dependency; CI and
@@ -42,15 +52,15 @@ Nothing to wire up beyond autolinking: the wrapper's Gradle module pulls in the 
 projects. `minSdk 24`+. The Android SDK declares the `INTERNET` and `CAMERA` permissions (camera is
 used for in-widget KYC); they merge into your app automatically.
 
-This release requires **io.meld:meldsdk 0.7.0** for protocol dispatch. To build against an
-unreleased native checkout instead, publish it to Maven Local and pass the same version to the app
-build:
+This release requires **io.meld:meldsdk 0.8.0** for readiness checks, on top of the protocol
+dispatch 0.7.0 introduced. To build against an unreleased native checkout instead, publish it to
+Maven Local and pass the same version to the app build:
 
 ```bash
 # in meldsdk-android
-./gradlew :meldsdk:publishToMavenLocal -PmeldsdkVersion=0.7.0-local
-# in the app's android/ directory (or export ORG_GRADLE_PROJECT_meldSdkVersion=0.7.0-local)
-./gradlew :app:assembleDebug -PmeldSdkVersion=0.7.0-local
+./gradlew :meldsdk:publishToMavenLocal -PmeldsdkVersion=0.8.0-local
+# in the app's android/ directory (or export ORG_GRADLE_PROJECT_meldSdkVersion=0.8.0-local)
+./gradlew :app:assembleDebug -PmeldSdkVersion=0.8.0-local
 ```
 
 The override searches Maven Local for the `io.meld` group only. Without it the wrapper resolves
@@ -82,8 +92,17 @@ Meld.configure('sandbox'); // or 'production'
 ```
 
 Guard before rendering: `if ((await Meld.capabilities(order)).surface !== 'unsupported') { … }`
-(async on RN since it crosses the native bridge). `embeddable` tells you whether the component needs
-a visible area; it does not indicate whether a native sheet is supported. Keep the complete order
+(async on RN since it crosses the native bridge). Branch only on two things:
+
+- **`surface === 'unsupported'`:** this app build cannot present the order here. Do not render it;
+  offer another method.
+- **`embeddable`:** true means the payment renders into the component, so give it room. False
+  means it needs no visible area, and a zero-size component is enough. It does not indicate whether
+  a native sheet is supported.
+
+Every other `surface` value is informational. iOS reports values such as `native-applepay`,
+Android `embedded` and `native-wallet`, and new values may appear without notice, so never branch
+on them. `requiresUserGesture: true` means: mount from the customer's tap. Keep the complete order
 response, including `headlessPresentation` and `paymentActions`, and pass it through unchanged.
 
 Declared protocols also depend on the installed native bridge. A bridge without a protocol
@@ -101,45 +120,105 @@ On Android the registry presents version 1 `MERCURYO_WIDGET`, `UPHOLD_WIDGET` an
 cards, and `GOOGLE_PAY` on `PROVIDER_HOSTED` with `COINBASE_PAYMENT_LINK`. It declines every Apple
 Pay protocol.
 
-### Check a quote before creating an order
+### Check the device before you quote
+
+Ask whether this device can pay with a payment method at all before you request a quote, for
+example to decide whether to show an Apple Pay or Google Pay entry point. No provider or quote row
+is needed:
 
 ```tsx
-const presentation = quote.headlessPresentation;
-if (!presentation) return; // Select an explicitly supported alternative; never infer from provider name.
-const caps = await Meld.presentationCapabilities(quote.paymentMethodType, presentation);
+const readiness = await Meld.paymentMethodReadiness('APPLE_PAY');
+if (readiness.status === 'unavailable') leaveOut('APPLE_PAY'); // readiness.code is PAYMENT_METHOD_UNAVAILABLE
+```
+
+| `paymentMethodType` | iOS | Android |
+|---|---|---|
+| `APPLE_PAY` | `ready` when payments aren't restricted and Wallet holds a card on a network one of the SDK's Apple Pay presentations takes, otherwise `unavailable` | `unavailable` |
+| `GOOGLE_PAY` | `unavailable` | `ready` when Google Pay holds a Visa, Mastercard, American Express or Discover card, otherwise `unavailable`; `unknown` when Google Play services is missing, out of date or slow, and in place of `unavailable` when configured for `'sandbox'` or `'qa'` |
+| Any other, such as `CREDIT_DEBIT_CARD` | `unknown` | `unknown` |
+
+`unknown` means nothing on the device decides the method, or the SDK could not tell, so you may
+offer it. `ready` does not mean every provider takes the customer's card (Mercuryo takes only Visa
+and Mastercard), so ask again for each quote row ([below](#check-readiness-before-creating-an-order)).
+The check is advisory, makes no provider request and needs MeldSDK 0.10 on iOS or io.meld:meldsdk
+0.8.0 on Android. A binary from before them, including one running this JavaScript through an OTA
+update, answers `unavailable` for the other platform's wallet (Apple Pay on Android, Google Pay on
+iOS) and `unknown` for everything else.
+
+### Check a quote before creating an order
+
+Pass the quote row (`POST /payments/crypto/quote?integrationMode=HEADLESS`); the SDK reads only its
+`paymentMethodType` and `headlessPresentation`:
+
+```tsx
+if (!quote.headlessPresentation) return; // Select an explicitly supported alternative; never infer from provider name.
+const caps = await Meld.presentationCapabilities(quote);
 if (caps.surface === 'unsupported') return;
 ```
 
-The check consults the running native app's adapter registry with the exact payment method,
-surface, protocol and version. It makes no provider request and needs no order or credentials.
-An older bridge without this method (iOS before MeldSDK 0.8, Android before io.meld:meldsdk
-0.7.0) returns `unsupported`, including when new JavaScript arrives through an OTA update. Unknown
-or malformed declarations also fail closed.
+The positional form, `Meld.presentationCapabilities(quote.paymentMethodType, quote.headlessPresentation)`,
+still works. The check consults the running native app's adapter registry with the exact payment
+method, surface, protocol and version. It makes no provider request and needs no order or
+credentials. An older bridge without this method (iOS before MeldSDK 0.8, Android before
+io.meld:meldsdk 0.7.0) returns `unsupported`, including when new JavaScript arrives through an OTA
+update. Unknown or malformed declarations also fail closed.
 
 This is advisory SDK support. Continue checking server requirements, route eligibility and device
-Apple Pay readiness, then call `Meld.capabilities(order)` on the complete create response before
+readiness (below), then call `Meld.capabilities(order)` on the complete create response before
 mounting. Preflight does not authorize an order, satisfy legal requirements or guarantee a payable
 order. `embeddable: false` is valid for a supported native sheet. This API requires MeldSDK 0.8 on
 iOS or io.meld:meldsdk 0.7.0 on Android, or later.
+
+### Check readiness before creating an order
+
+Ask whether this device can pay with a quote row's method before you create the order, so a
+customer who cannot pay is not offered Apple Pay or Google Pay:
+
+```tsx
+const readiness = await Meld.presentationReadiness(quote);
+switch (readiness.status) {
+  case 'ready': offer(quote); break;
+  case 'unknown': offer(quote); break;    // could not tell; the payment has the final word
+  case 'unavailable': hide(quote); break; // readiness.code is PAYMENT_METHOD_UNAVAILABLE
+}
+```
+
+- **`ready`:** offer the method.
+- **`unavailable`:** hide the method. `code` is `PAYMENT_METHOD_UNAVAILABLE`. The SDK does not
+  present the row's declaration here, or the device or wallet cannot pay with it (Apple Pay through
+  PassKit on iOS, Google Pay through Google Play services on Android). No order exists, so there is
+  nothing to track.
+- **`unknown`:** the SDK could not tell. You may offer the method. Card rows answer `unknown` on
+  iOS and Android alike, because nothing on the device decides whether a card pays. So do, on iOS,
+  provider pages whose merchant account decides which Wallet cards it takes.
+
+`reason` explains the answer, for logging only. Readiness is advisory and makes no provider request.
+If you create the order anyway, the mounted payment still reports `onError` with
+`PAYMENT_METHOD_UNAVAILABLE` when it cannot pay, and that is the final word. The native check needs
+MeldSDK 0.10 on iOS or io.meld:meldsdk 0.8.0 on Android. A binary from before them, including one
+running this JavaScript through an OTA update, answers from `presentationCapabilities`:
+`unavailable` where that is `unsupported`, otherwise `unknown`.
+
+`Meld.canPresentApplePay()` was removed in 0.10.0. `Meld.paymentMethodReadiness('APPLE_PAY')` makes
+the same device check, and the row's readiness knows the provider.
 
 ### Apple Pay
 
 The same component, plus an `applePay` prop carrying what the order doesn't:
 
 ```tsx
-if (await Meld.canPresentApplePay()) {                 // a card in Wallet, not just a capable device
-  <MeldWidget
-    order={order}                                       // paymentMethodType: 'APPLE_PAY'
-    applePay={{
-      amount: '15.00',                                  // must match the order
-      currencyCode: 'EUR',
-      summaryItemLabel: 'Acme — Buy BTC',
-    }}
-    onPaymentSubmitted={() => showProcessing()}
-    onCancel={() => backToCheckout()}
-    onError={(e) => showError(e.message)}
-  />
-}
+// Offered only for a quote row whose Meld.presentationReadiness(quote) was not 'unavailable'.
+<MeldWidget
+  order={order}                                         // paymentMethodType: 'APPLE_PAY'
+  applePay={{
+    amount: '15.00',                                    // must match the order
+    currencyCode: 'EUR',
+    summaryItemLabel: 'Acme — Buy BTC',
+  }}
+  onPaymentSubmitted={() => showProcessing()}
+  onCancel={() => backToCheckout()}
+  onError={(e) => showError(e.message)}
+/>
 ```
 
 Pass `applePay` for **any** `APPLE_PAY` order without checking which provider it routed to. Some
@@ -149,8 +228,9 @@ Either way the customer sees only Apple's sheet. The prop is read only by the su
 it (a provider-hosted page does not use it), and choosing between them is the SDK's job — that is
 the point of one component.
 
-On iOS, both report `surface: 'native-applepay'` and `embeddable: false`: the SDK presents the
-payment UI, so the component needs no visible area and a zero-size component is enough. Both also
+On iOS, both report `embeddable: false` (with the informational `surface: 'native-applepay'`): the
+SDK presents the payment UI, so the component needs no visible area and a zero-size component is
+enough. Both also
 report `requiresUserGesture: true`, so mount from the customer's tap on your Apple Pay button. A
 provider-hosted page needs iOS 16 or later; on iOS 15 its capabilities report `unsupported`, so
 leave that option out. If there is no window to present it from, the component reports
@@ -213,6 +293,31 @@ provider-hosted Apple Pay — that runs under the provider's merchant id on thei
 > Face), which is enough to exercise mounting, events and the cancel path. It cannot produce a
 > decryptable payment token, so completing a real payment needs a device.
 
+### Google Pay and the Android lifecycle
+
+On Android, a `GOOGLE_PAY` order on `PROVIDER_HOSTED` with `COINBASE_PAYMENT_LINK` reports
+`embeddable: false` and `requiresUserGesture: true`. Render the same component with no extra prop,
+from the customer's tap on your Google Pay button; it needs no visible area. The provider's page
+runs off-screen, its pay button is pressed once, and Google's sheet is all the customer sees.
+
+The Android view mounts a surface with `embeddable: false` for the life of the app's current
+Activity, not of the component's view. Leaving the screen (a pushed screen, another tab, a modal)
+neither ends nor restarts the payment, and its callbacks keep arriving. The payment ends when you
+unmount the component, or when that Activity is destroyed, including by a configuration change it
+does not handle itself; the React Native template's `android:configChanges` already covers
+rotation, screen size and dark mode. If no Activity is on screen, the component reports
+`MOUNT_FAILED`. Embedded card widgets still render into the component's view.
+
+Replacing the order tears down the old mount, discards its late callbacks and mounts the new order.
+Passing an equal order again does not restart the payment, and an order that failed to mount is
+not retried until a different one arrives.
+
+Google Pay runs on your own provider account, and your app needs its own approval in the
+[Google Pay & Wallet Console](https://pay.google.com/business/console) and a Google Play listing
+before it works in production. It needs a physical phone. See
+[meldsdk-android's Google Pay section](https://github.com/meldeng/meldsdk-android#google-pay) for
+the device requirements, TEST-environment orders and troubleshooting.
+
 ## Events
 
 | Event | Fires when | Do |
@@ -235,37 +340,101 @@ it, so a failure is never followed by a submission.
 `onCancel`, so react to those callbacks rather than to the status. `pending` means the provider is
 processing and promises nothing by itself. Every callback also receives the `orderId`.
 
-### Terminal contract (iOS)
+### Terminal contract
 
-On iOS, from mount until you unmount the component, the SDK delivers **exactly one** terminal
-callback, and nothing after it: no `onStatusChange` and no `onReady`.
+On iOS and Android, from mount until you unmount the component, the SDK delivers **exactly one**
+terminal callback, and nothing after it: no `onStatusChange` and no `onReady`.
 
 - `onPaymentSubmitted`: the payment was submitted. Settlement arrives by webhook.
 - `onCancel`: nothing will settle for this order.
-- `onError` with `recoverable: false`: `e.code` says whether a payment attempt may exist.
+- `onError` with `recoverable: false`: `attemptMayExist(e.code)` says whether a payment attempt
+  may exist.
 
 `recoverable: true` comes only from visible embedded card widgets, and is not terminal. Unmounting
 before a terminal callback delivers none.
 
-| `e.code` | A payment attempt may exist? | Do |
+### Error codes
+
+`MeldErrorCode` names the codes, and `attemptMayExist(code)` says whether a payment attempt may
+exist after a terminal error. It returns the same as `attemptMayExist` in MeldSDK iOS 0.10.0 and
+io.meld:meldsdk 0.8.0 for every code except the four
+[this wrapper reports itself](#codes-only-this-wrapper-reports). No native SDK emits those four; the
+native functions answer true for them, as for any code they do not know, and this one answers
+false, because nothing was mounted.
+
+```tsx
+import { MeldErrorCode, attemptMayExist } from '@meldcrypto/react-native-sdk';
+
+onError={(e) => {
+  if (e.recoverable) return;                                     // the card widget is still up
+  if (attemptMayExist(e.code)) return followOrder(e.orderId);    // never pay this order again
+  if (e.code === MeldErrorCode.PAYMENT_METHOD_UNAVAILABLE) return offerAnotherMethod(e.paymentMethodType);
+  backToCheckout();
+}}
+```
+
+`e.paymentMethodType` is the order's `paymentMethodType`, such as `APPLE_PAY` or `GOOGLE_PAY`, so
+copy such as "Apple Pay isn't available" can name the method without branching on `e.code`. It is
+absent when the order has none, and on errors from a native binary built before 0.10.0, such as
+one running this JavaScript through an OTA update.
+
+These seven codes, and their `attemptMayExist` values, are the same in every Meld SDK:
+
+| `e.code` | `attemptMayExist` | Do |
 |---|---|---|
-| `APPLE_PAY_UNAVAILABLE` | no | Offer hosted checkout or another method |
-| `PRESENTATION_FAILED` | no | Back to your CTA; the next tap creates a new order |
-| `PAYMENT_REJECTED` | no (declined) | Ask the customer to choose another option |
-| `ORDER_STATE_CHANGED` | no | Create a new order |
-| `VERIFICATION_PENDING` | no | Tell the customer the provider is reviewing |
-| `PAYMENT_OUTCOME_UNKNOWN` | **yes** | Follow the order through your backend; never pay this order again |
-| `INVALID_ORDER`, `INVALID_APPLE_PAY_REQUEST`, `MOUNT_FAILED`, `UNSUPPORTED_NATIVE_PROTOCOL` | no (nothing was mounted) | Fix the input, or fall back |
+| `PAYMENT_METHOD_UNAVAILABLE` | false | This device or customer cannot pay with the method. Offer another method |
+| `PRESENTATION_FAILED` | false | Back to your CTA; the next tap creates a new order |
+| `PAYMENT_REJECTED` | false (declined) | Ask the customer to choose another option |
+| `ORDER_STATE_CHANGED` | false | Create a new order |
+| `VERIFICATION_PENDING` | false | Tell the customer the provider is reviewing |
+| `PAYMENT_OUTCOME_UNKNOWN` | **true** | Follow the order through your backend; never pay this order again |
+| `PROVIDER_LOAD_FAILED` | **true** | The provider's page did not load. With `recoverable: true` the surface stays up and the customer may carry on; otherwise follow the order before offering a new one |
 
-Treat any other code as "a payment attempt may exist", including provider-specific ones such as
-`WAIT_FOR_PAYMENT` or `VERIFICATION_WINDOW_EXPIRED`. `e.detail` carries the raw provider event and
-code (for example `onramp_api.load_error:ERROR_CODE_GUEST_APPLE_PAY_NOT_SUPPORTED`), for logging
-only.
+Android never emits `VERIFICATION_PENDING` today; it is listed so code shared across platforms reads
+it the same way. `e.detail` carries the raw provider event and code (for example
+`onramp_api.load_error:ERROR_CODE_GUEST_APPLE_PAY_NOT_SUPPORTED`), for logging only.
 
-Android does not enforce this contract yet. There, `onPaymentSubmitted` also fires once per mount,
-and a `completed` status also produces it, but statuses and other callbacks can still arrive after
-a terminal one, so ignore anything that follows your first terminal callback. Apple Pay is
-iOS-only.
+#### Codes only this wrapper reports
+
+This wrapper reports these before or instead of a native mount. Nothing was mounted, so no attempt
+exists: fix the input, or fall back.
+
+| `e.code` | Reported when | `attemptMayExist` |
+|---|---|---|
+| `INVALID_ORDER` | The order JSON could not be parsed | false |
+| `INVALID_APPLE_PAY_REQUEST` | iOS only: the `applePay` prop is malformed | false |
+| `MOUNT_FAILED` | The native SDK refused the order, there was no window (iOS) or Activity (Android) to present it from, or an embedded surface stayed zero-size (iOS) | false |
+| `UNSUPPORTED_NATIVE_PROTOCOL` | This app binary cannot present the order's declared protocol | false |
+
+`MOUNT_FAILED` is never a card widget's own `mount_failed`. When the Uphold or Banxa card widget's
+provider SDK does not load (`sdk_unavailable`), iOS and Android report `PROVIDER_LOAD_FAILED`
+(`attemptMayExist` true). When mounting the widget throws before it shows (`mount_failed`), they
+report `PRESENTATION_FAILED` (false). `e.detail` names the widget's own code.
+
+#### Codes from one platform or provider
+
+Each of these may follow a payment: follow the order through your backend and never pay it again.
+
+| `e.code` | Reported by | `attemptMayExist` |
+|---|---|---|
+| `PAYMENT_STATE_UNAVAILABLE` | iOS: Mercuryo Apple Pay could not read the order's payment state before the sheet | true |
+| `PAYMENT_CONTINUATION_UNAVAILABLE` | iOS: Mercuryo Apple Pay could not continue the existing order on this device | true |
+| `INVALID_VERIFICATION` | iOS: the provider's verification response cannot be presented | true |
+| `VERIFICATION_WINDOW_EXPIRED` | iOS: the verification window closed | true |
+| `VERIFICATION_UNAVAILABLE` | iOS: the device could not record that verification was opened | true |
+| `WAIT_FOR_PAYMENT` | iOS: verification was already opened for this order | true |
+| `PAYMENT_NOT_ACCEPTED` | iOS: the legacy Mercuryo Apple Pay endpoint did not accept the payment | true |
+| `authorize_session_failed`, `authorize_session_invalid` | iOS and Android: the Uphold card widget could not start its authorization step | true |
+| A card widget's own code, such as `error`, or a provider's terminal status, such as Mercuryo's `failed` | iOS and Android: the Mercuryo, Uphold and Banxa card widgets, and on iOS the legacy Mercuryo Apple Pay endpoint | true |
+
+Any other code, including one this version does not know, also has `attemptMayExist` true.
+
+Before 0.10.0, iOS reported `APPLE_PAY_UNAVAILABLE` where it now reports
+`PAYMENT_METHOD_UNAVAILABLE`. 0.10.0 removes it: `MeldErrorCode.APPLE_PAY_UNAVAILABLE` is gone, and
+`attemptMayExist` treats the old code like any other code this version does not know. iOS also
+reported `NAVIGATION_FAILED` when a provider page failed after it had started loading; it now
+reports `PROVIDER_LOAD_FAILED` with `recoverable: false`. The Uphold card widget, and the Banxa one
+on Android, reported `sdk_unavailable` and `mount_failed` as their own codes.
 
 ## Settlement — webhook, never the SDK
 
