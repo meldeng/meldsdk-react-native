@@ -23,23 +23,22 @@ to add to your `Podfile`. Just install with **static frameworks** (`MeldSDK` is 
 cd ios && USE_FRAMEWORKS=static pod install
 ```
 
-This release (0.10.0) requires **MeldSDK 0.10.x** (`~> 0.10.0`) for the readiness checks, on top of
-the protocol dispatch, shared payment actions and native Stripe execution that 0.8 introduced. It
-does not compile against 0.9.
+This release (0.11.0) requires **MeldSDK 0.11.x** (`~> 0.11.0`) for Coinme card, on top of the
+readiness checks 0.10 introduced.
 
-**Before you upgrade, remove any MeldSDK pin of your own, or raise it to `~> 0.10.0`.** The wrapper's
+**Before you upgrade, remove any MeldSDK pin of your own, or raise it to `~> 0.11.0`.** The wrapper's
 podspec already brings MeldSDK, so your app needs no pin. Look for a Podfile line such as
-`pod 'MeldSDK', '~> 0.9.0'`, and in Expo for an `expo-build-properties` entry such as
-`"extraPods": [{ "name": "MeldSDK", "version": "~> 0.9.0" }]` (prebuild again after changing it).
-`pod update MeldSDK` does not change an explicit pin, and while one excludes 0.10, `pod install`
-cannot find compatible versions for MeldSDK. Then update a Podfile.lock that still holds 0.8 or 0.9
-with `pod update MeldSDK`.
+`pod 'MeldSDK', '~> 0.10.0'`, and in Expo for an `expo-build-properties` entry such as
+`"extraPods": [{ "name": "MeldSDK", "version": "~> 0.10.0" }]` (prebuild again after changing it).
+`pod update MeldSDK` does not change an explicit pin, and while one excludes 0.11, `pod install`
+cannot find compatible versions for MeldSDK. Then update a Podfile.lock that still holds an earlier
+version with `pod update MeldSDK`.
 
 To test the example against a local native checkout instead of the published pod:
 
 ```bash
 cd example/ios
-MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.10.0 USE_FRAMEWORKS=static pod install
+MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.11.0 USE_FRAMEWORKS=static pod install
 ```
 
 The override compiles the native SDK from source and does not relax the minimum dependency; CI and
@@ -52,15 +51,15 @@ Nothing to wire up beyond autolinking: the wrapper's Gradle module pulls in the 
 projects. `minSdk 24`+. The Android SDK declares the `INTERNET` and `CAMERA` permissions (camera is
 used for in-widget KYC); they merge into your app automatically.
 
-This release requires **io.meld:meldsdk 0.8.0** for readiness checks, on top of the protocol
-dispatch 0.7.0 introduced. To build against an unreleased native checkout instead, publish it to
+This release requires **io.meld:meldsdk 0.9.0** for Coinme card, on top of the readiness checks
+0.8.0 introduced. To build against an unreleased native checkout instead, publish it to
 Maven Local and pass the same version to the app build:
 
 ```bash
 # in meldsdk-android
-./gradlew :meldsdk:publishToMavenLocal -PmeldsdkVersion=0.8.0-local
-# in the app's android/ directory (or export ORG_GRADLE_PROJECT_meldSdkVersion=0.8.0-local)
-./gradlew :app:assembleDebug -PmeldSdkVersion=0.8.0-local
+./gradlew :meldsdk:publishToMavenLocal -PmeldsdkVersion=0.9.0-local
+# in the app's android/ directory (or export ORG_GRADLE_PROJECT_meldSdkVersion=0.9.0-local)
+./gradlew :app:assembleDebug -PmeldSdkVersion=0.9.0-local
 ```
 
 The override searches Maven Local for the `io.meld` group only. Without it the wrapper resolves
@@ -318,6 +317,17 @@ before it works in production. It needs a physical phone. See
 [meldsdk-android's Google Pay section](https://github.com/meldeng/meldsdk-android#google-pay) for
 the device requirements, TEST-environment orders and troubleshooting.
 
+### Coinme card
+
+A `CREDIT_DEBIT_CARD` order on `VENDOR_SDK` with `COINME_VAULT` runs Coinme's checkout in a WebView
+inside the component's view, on both platforms, so give the component a visible size. It shows the
+customer's saved Coinme cards or Coinme's secure card fields; the native SDKs run it from the bundled
+Meld web SDK, so there is nothing to install from Coinme and no extra build requirement. Declare the
+device signals Coinme's Risk SDK collects in your App Store and Google Play privacy answers, as listed
+in [meldsdk-ios's](https://github.com/meldeng/meldsdk-ios#coinme-card) and
+[meldsdk-android's](https://github.com/meldeng/meldsdk-android#coinme-card-coinme_vault) Coinme
+sections.
+
 ## Events
 
 | Event | Fires when | Do |
@@ -390,8 +400,8 @@ These seven codes, and their `attemptMayExist` values, are the same in every Mel
 | `PAYMENT_OUTCOME_UNKNOWN` | **true** | Follow the order through your backend; never pay this order again |
 | `PROVIDER_LOAD_FAILED` | **true** | The provider's page did not load. With `recoverable: true` the surface stays up and the customer may carry on; otherwise follow the order before offering a new one |
 
-Android never emits `VERIFICATION_PENDING` today; it is listed so code shared across platforms reads
-it the same way. `e.detail` carries the raw provider event and code (for example
+Both platforms report `VERIFICATION_PENDING` for Coinme card when Coinme was still verifying a newly
+added card after three minutes. `e.detail` carries the raw provider event and code (for example
 `onramp_api.load_error:ERROR_CODE_GUEST_APPLE_PAY_NOT_SUPPORTED`), for logging only.
 
 #### Codes only this wrapper reports
