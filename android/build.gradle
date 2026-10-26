@@ -9,7 +9,7 @@ def safeExtGet = { prop, fallback -> rootProject.ext.has(prop) ? rootProject.ext
 // `-PmeldSdkVersion=<v>` (or `rootProject.ext.meldSdkVersion`) builds against an unreleased native
 // SDK published with its `publishToMavenLocal`; Maven Local is then searched for io.meld only.
 def meldSdkOverride = findProperty("meldSdkVersion") ?: safeExtGet("meldSdkVersion", null)
-def meldSdkVersion = meldSdkOverride ?: "0.8.0"
+def meldSdkVersion = meldSdkOverride ?: "0.9.0"
 if (meldSdkOverride != null) {
     rootProject.allprojects {
         repositories {

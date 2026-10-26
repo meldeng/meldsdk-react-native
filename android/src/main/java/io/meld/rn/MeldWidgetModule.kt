@@ -30,7 +30,11 @@ class MeldWidgetModule(reactContext: ReactApplicationContext) : ReactContextBase
     @ReactMethod
     fun configure(environment: String) {
         Meld.configure(
-            if (environment == "production") MeldEnvironment.PRODUCTION else MeldEnvironment.SANDBOX,
+            when (environment) {
+                "production" -> MeldEnvironment.PRODUCTION
+                "qa" -> MeldEnvironment.QA
+                else -> MeldEnvironment.SANDBOX
+            },
         )
     }
 
