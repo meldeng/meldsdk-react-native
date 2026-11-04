@@ -6,6 +6,7 @@ import PackageDescription
 let package = Package(name: "MeldBridgeSupport", targets: [
     .target(name: "MeldBridgeSupport", path: "ios",
             exclude: ["MeldModule.swift", "MeldModule.m", "MeldWidgetView.swift", "MeldWidgetManager.swift", "MeldWidgetManager.m"],
-            sources: ["MeldMountLifecycle.swift", "MeldApplePayInput.swift", "MeldErrorEvent.swift", "MeldReadinessEvent.swift"]),
+            sources: ["MeldMountLifecycle.swift", "MeldApplePayInput.swift", "MeldErrorEvent.swift", "MeldReadinessEvent.swift",
+                      "MeldReadyEvent.swift"]),
     .testTarget(name: "MeldBridgeSupportTests", dependencies: ["MeldBridgeSupport"], path: "Tests/MeldBridgeSupportTests")
 ])
