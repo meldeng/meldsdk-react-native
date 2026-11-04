@@ -1,0 +1,2 @@
+# The shared requirements fixtures are checked byte for byte against SHA256SUMS.
+Tests/fixtures/requirements-fixtures/** text eol=lf
