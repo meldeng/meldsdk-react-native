@@ -1,7 +1,8 @@
 # MeldSDK — React Native example (iOS + Android)
 
 A React Native app that runs the full flow on **both platforms**: live quote (**You pay** /
-**You receive**) → editable wallet → **Buy** → mount the Mercuryo widget with `<MeldWidget>`, with
+**You receive**) → editable wallet → **Buy** → the customer's requirements with `Meld.ensureReady` →
+mount the Mercuryo widget with `<MeldWidget>`, with
 a status banner + event log and auto-close on a terminal outcome. Same flow and events as the
 native [iOS](https://github.com/meldeng/meldsdk-ios/tree/main/Example),
 [Android](https://github.com/meldeng/meldsdk-android/tree/main/example), and web examples.
@@ -69,6 +70,12 @@ npm run android        # terminal 2
 KYC uses the camera; the app requests the `CAMERA` permission on first launch.
 
 ## Notes
+
+- **Requirements:** before creating the order, **Buy** mints a requirements session for the
+  selected provider and runs `Meld.ensureReady` (`src/requirements.ts`): an alert for a provider's
+  terms and, on iOS, a prompt per field a step needs. Android has no text prompt, so those steps
+  come back as `ACTION_REQUIRED` in the error line. The order is created only on `READY` or
+  `UNDETERMINED`; an account without requirements sessions skips the check.
 
 - **Settlement is the webhook, not a client event.** Treat `completed` / `onPaymentSubmitted` as
   UX hints; mark the order paid only on Meld's `TRANSACTION_STATUS_CHANGED` webhook to your backend.

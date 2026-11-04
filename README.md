@@ -163,7 +163,8 @@ credentials. An older bridge without this method (iOS before MeldSDK 0.8, Androi
 io.meld:meldsdk 0.7.0) returns `unsupported`, including when new JavaScript arrives through an OTA
 update. Unknown or malformed declarations also fail closed.
 
-This is advisory SDK support. Continue checking server requirements, route eligibility and device
+This is advisory SDK support. Continue checking the customer's requirements
+([`Meld.ensureReady`](#customer-requirements-before-the-order)), route eligibility and device
 readiness (below), then call `Meld.capabilities(order)` on the complete create response before
 mounting. Preflight does not authorize an order, satisfy legal requirements or guarantee a payable
 order. `embeddable: false` is valid for a supported native sheet. This API requires MeldSDK 0.8 on
@@ -201,6 +202,145 @@ running this JavaScript through an OTA update, answers from `presentationCapabil
 
 `Meld.canPresentApplePay()` was removed in 0.10.0. `Meld.paymentMethodReadiness('APPLE_PAY')` makes
 the same device check, and the row's readiness knows the provider.
+
+### Customer requirements, before the order
+
+`Meld.ensureReady` runs what a customer still needs before you create an order with the providers
+you offer: verify a contact, accept a provider's terms, give their details, complete Meld's KYC, or
+finish a provider's hosted onboarding. Meld plans every step; the native SDK runs the ones it can and
+asks your app for what only you can supply. No provider names appear in this API, and your API key
+never reaches the app.
+
+**1. Your backend mints a session** with its API key:
+
+```http
+POST /crypto/onramp/requirements-sessions
+Authorization: BASIC <your API key>
+Content-Type: application/json
+
+{"customerId": "W9kL817BBS7bNEwxAZaX4z",
+ "serviceProviders": ["BANXA", "UPHOLD"],
+ "order": {"paymentMethodType": "CREDIT_DEBIT_CARD", "sourceCurrencyCode": "USD", "sourceAmount": 250,
+           "destinationCurrencyCode": "USDC", "destinationNetworkCode": "BASE", "countryCode": "US"},
+ "readyWhen": "ALL"}
+```
+
+Pass the `201` response to the app unchanged. It carries a bearer for that customer and those
+providers that lasts 30 minutes. A session names 1 to 5 providers; `order` is optional; `readyWhen`
+is `ALL` (the default: every provider must be ready) or `ANY`. Requirements sessions are enabled per
+Meld account, so ask Meld to enable yours.
+
+**2. The app runs it:**
+
+```tsx
+const handle = Meld.ensureReady(session, {
+  // request.fields: key, label, fieldType, jsonSchema, allowedValues.
+  // request.fieldErrors: what Meld refused in your last answer, and why.
+  collect: (request) => showForm(request),         // the values by field key, or null if you handled it
+  confirmAgreement: (request) => showTerms(request.serviceProvider, request.url), // true once accepted
+  renewSession: () => mintSessionOnYourBackend(),  // a new session, or null
+});
+
+const result = await handle.result;
+switch (result.status) {
+  case 'READY':
+  case 'UNDETERMINED': return createOrder();
+  case 'ACTION_REQUIRED': return show(result.pending, result.providers);
+  default: return report(result);
+}
+```
+
+| `result.status` | Means | Do |
+|---|---|---|
+| `READY` | Every provider is ready (with `readyWhen: ANY`, one is) | Create the order |
+| `UNDETERMINED` | Meld could not tell | Create the order; creation has the final word |
+| `PENDING` | Only reviews are left, and `waitTimeoutMs` passed | Wait for the `CUSTOMER_KYC_STATUS_CHANGE` webhook, or run `ensureReady` again later |
+| `ACTION_REQUIRED` | A step is left that this run could not do: no handler for it, terms declined, details or a contact code refused four times, a page closed unfinished, or a step the SDK cannot run, such as details only the provider can collect (then `pending` is empty) | Show `result.pending`, or each provider's `open` steps when it is empty, then run `ensureReady` again |
+| `BLOCKED` | A provider refused the customer | Offer another provider |
+| `CANCELLED` | You called `handle.cancel()`, a `collect`, `confirmAgreement` or `renewSession` request went unanswered for 10 minutes, or (Android) the Activity was destroyed | — |
+| `EXPIRED` | Meld refused the session (it expired, or was minted in another environment) and `renewSession` gave no new one, Meld refused that one too, or `renewSession` was already asked 3 times in this run | Mint a new session in the environment the app is configured for |
+| `FAILED` | `result.error.kind` is `http` (with `status` and `code`), `transport` or `protocol` | Try again later |
+
+`result.providers` gives each provider's `status`, `eligible` and its `open` steps (empty when the run
+was cancelled from JavaScript). Each open step carries Meld's `reason` when there is one and, on a
+share the provider refused, its `errorCodes` (such as Coinme's `PHONE_VERIFICATION_REQUIRED`; absent
+when there are none). The SDK does not act on them. `result.continuation` lists the steps a provider
+declares to run inside `<MeldWidget>` after create, today only Stripe's identity check, so `READY`
+can still be followed by them. Stripe orders are presented on iOS only; on Android their
+capabilities report `unsupported`. Other providers' own pages, such as Mercuryo's widget or
+Coinbase's payment page, are not listed: they open when the order is mounted. Every status and step
+kind is an open set: treat a value you do not know as "not ready yet".
+
+- A handler may answer with a value or a promise. Answer `collect`, `confirmAgreement` and
+  `renewSession` within 10 minutes, or the run ends `CANCELLED`. `presentUrl` has no limit, since a
+  hosted page can stay open longer; `handle.cancel()` still ends the run. A handler that throws, or
+  answers malformed values, counts as `null` from `collect` and `renewSession`, `false` from
+  `confirmAgreement` and a closed page from `presentUrl`.
+- No handler is called once `result` has resolved, even when `onProgress` cancelled the run, and an
+  answer still pending then is dropped. You can keep the handle: once `result` has resolved it holds
+  none of your handlers.
+- A step whose handler you leave out is never run: the run ends `ACTION_REQUIRED` with that step in
+  `pending`. The SDK never accepts terms on its own, and `confirmAgreement` accepts only `true`.
+- The values you answer go to the native SDK and on to Meld; no event carries them back.
+- `onProgress` reports `READING`, `RUNNING`, `AWAITING_INPUT`, `PRESENTING` and `WAITING`, with the
+  latest read as `snapshot`.
+- When nothing is left that the SDK can run and nothing to wait for, the run ends `ACTION_REQUIRED`
+  at once with `pending` empty, and each provider's `open` steps name what is left (such as details
+  only the provider can collect). It does not poll to `PENDING`.
+- While only reviews are left, the SDK polls as often as Meld asks (every 1 to 60 seconds).
+  `handle.refresh()` ends that wait and reads at once: call it when your backend relays a
+  `CUSTOMER_KYC_STATUS_CHANGE` webhook to the app. It does not shorten a retry's backoff. The third
+  argument, `{ waitTimeoutMs }`, bounds the polling (10 minutes by default).
+- Retries are bounded, alike on iOS and Android. A dropped connection is sent again with the same
+  idempotency key after 1, 2 and 4 seconds, then the run ends `FAILED` with `transport`. A request
+  Meld is still running (425) is sent again each second, up to 5 times. A step whose outcome Meld
+  could not confirm (503 `OUTCOME_UNKNOWN`) is read first. If Meld still offers it, only a page
+  refresh is sent again with a new key, at most 3 times; any other step may have run, for example a
+  code sent, so the run ends `ACTION_REQUIRED` with it. A 401 asks `renewSession` for a new session
+  and carries on with it; `renewSession` is asked at most once between two successful answers and at most 3 times per
+  run, and the next 401 ends the run `EXPIRED`.
+- A session that is not a JSON object, or a handler that is not a function, throws a `TypeError`.
+  A session the native SDK refuses ends `FAILED` with `error.kind` `protocol`.
+- A session minted in another environment than `Meld.configure` set cannot be told apart, because
+  its endpoint is relative: Meld refuses it with 401, and after the one `renewSession` the run ends
+  `EXPIRED`, not `FAILED`. Mint the session in the environment the app is configured for.
+
+**Hosted pages.** Meld's KYC, a provider's hosted onboarding or terms, and a provider's hosted form
+open with the native SDK's presenter. On iOS the customer first taps Continue (Cancel ends the run
+`ACTION_REQUIRED`; a link that aged while the prompt was up is refreshed and opened without asking
+again), the page opens in Safari View Controller, and the SDK closes it once the step is done. On
+Android it opens in a Custom Tab and counts as closed when the app's Activity resumes; the SDK cannot
+close it, so it does not read, and `handle.refresh()` does nothing, while the page is open. When the
+customer closes a page unfinished, or it fails to load, and Meld offered that page as a link (such as
+a provider's hosted onboarding), the SDK refreshes the step once before it reads again; after a 401 it
+sends that refresh again on the renewed session. Pages that open when the SDK runs a step, such as
+Meld's KYC or a provider's hosted form, and a page the SDK closed itself are not refreshed. Either
+way, the next read decides whether the step is done. If the step is still offered and nothing else
+changed, the SDK waits up to 30 seconds for Meld to report it done, then ends the run
+`ACTION_REQUIRED` with that step; it does not prompt, open the page or call `presentUrl` again. To
+present the page yourself, pass `presentUrl` and resolve once the page is closed, however long that
+takes. On Android the run needs a `ComponentActivity` on screen (React Native's `ReactActivity` is
+one); without one it ends `FAILED` with `error.kind` `protocol`.
+
+`Meld.ensureReady` needs MeldSDK 0.12 on iOS or io.meld:meldsdk 0.10.0 on Android. A binary from
+before them, including one running this JavaScript through an OTA update, ends `FAILED` with
+`error.kind` `protocol` at once.
+
+#### Hosted verification after a refused order
+
+When order creation is refused with a hosted verification page
+(`serviceProviderDetails.hostedVerificationUrl`, as for a new US customer's `KYC_NOT_COMPLETED`),
+open it, then create the order again with a new `externalOrderId`:
+
+```tsx
+await Meld.openHostedVerification(refusal.serviceProviderDetails.hostedVerificationUrl);
+await createOrder({ externalOrderId: newExternalOrderId() });
+```
+
+It opens the page as above and resolves once the customer closed it. It rejects a URL that is not
+https with a `TypeError`. On Android it also rejects, with `code` `presentation_unavailable`, when no
+Activity is on screen or no app can open the page; on iOS it resolves at once when there is nothing
+to present from. A binary without it rejects.
 
 ### Apple Pay
 
@@ -456,8 +596,8 @@ both are client-side UX signals. Mark the order paid only when your backend rece
 ## Example app
 
 A complete, runnable demo for **both platforms** is in [`example/`](example/) — the same flow as
-the iOS, Android, and web demos (live quote → wallet → Buy → mounted widget, with a status banner
-and event log). See [example/README.md](example/README.md) to set up credentials and run it.
+the iOS, Android, and web demos (live quote → wallet → Buy → requirements check with
+`Meld.ensureReady` → mounted widget, with a status banner and event log). See [example/README.md](example/README.md) to set up credentials and run it.
 
 ## License
 
