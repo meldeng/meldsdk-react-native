@@ -1,14 +1,23 @@
 import React from 'react';
-import { requireNativeComponent, NativeModules, Platform, type ViewStyle } from 'react-native';
+import { requireNativeComponent, NativeEventEmitter, NativeModules, Platform, type ViewStyle } from 'react-native';
 import {
   canMountOrder, inspectCapabilities, inspectPaymentMethodReadiness, inspectPresentationCapabilities,
   inspectPresentationReadiness, isNativeBridgeAvailable, presentationOf, type MeldHeadlessPresentation, type MeldPresentationRow,
   type MeldReadiness,
 } from './nativeSupport';
 import { MeldErrorCode } from './errorCodes';
+import {
+  openHostedVerificationOn, READY_EVENT, runEnsureReady, type MeldReadyHandle, type MeldReadyHandlers,
+  type MeldReadyOptions, type ReadyEvents,
+} from './ensureReady';
 
 export type { MeldHeadlessPresentation, MeldPresentationRow, MeldReadiness } from './nativeSupport';
 export { MeldErrorCode, attemptMayExist } from './errorCodes';
+export type {
+  MeldAgreementRequest, MeldCollectRequest, MeldFieldError, MeldPresentUrlRequest, MeldReadyContinuation, MeldReadyError,
+  MeldReadyField, MeldReadyHandle, MeldReadyHandlers, MeldReadyOptions, MeldReadyProgress, MeldReadyProvider,
+  MeldReadyResult, MeldReadyState, MeldReadyStatus, MeldReadyStep,
+} from './ensureReady';
 
 export type MeldEnvironment = 'sandbox' | 'qa' | 'production';
 export type MeldStatus = 'pending' | 'completed' | 'failed' | 'cancelled';
@@ -80,6 +89,16 @@ function presentationCapabilities(
   return inspectPresentationCapabilities(paymentMethodType, declared, NativeModules.MeldModule);
 }
 
+let readyEmitter: NativeEventEmitter | undefined;
+
+/** The native run's events, or undefined on a binary without `ensureReady`. */
+function readyEvents(): ReadyEvents | undefined {
+  const module = NativeModules.MeldModule;
+  if (typeof module?.ensureReady !== 'function') return undefined;
+  readyEmitter ??= new NativeEventEmitter(module);
+  return (listener) => readyEmitter!.addListener(READY_EVENT, listener);
+}
+
 export const Meld = {
   /**
    * True when the SDK's native code is compiled into the RUNNING binary.
@@ -131,6 +150,32 @@ export const Meld = {
    */
   presentationReadiness(row: MeldPresentationRow): Promise<MeldReadiness> {
     return inspectPresentationReadiness(row, NativeModules.MeldModule);
+  },
+
+  /**
+   * Run the customer's requirements session before you create the order. Pass the session your
+   * backend minted with `POST /crypto/onramp/requirements-sessions`, unchanged. Meld plans each
+   * step; the native SDK runs the ones it can and asks `handlers` for what only your app can
+   * supply. `result` resolves once: create the order on `READY` or `UNDETERMINED`.
+   *
+   * The session's endpoint is relative, so the SDK cannot tell a session minted in another
+   * environment than `Meld.configure` set: Meld refuses it with 401, and after the one
+   * `renewSession` the run ends `EXPIRED`.
+   *
+   * A binary without the native run, including one running this JavaScript through an OTA update,
+   * resolves `FAILED` with `error.kind` `protocol`.
+   */
+  ensureReady(session: object, handlers?: MeldReadyHandlers, options?: MeldReadyOptions): MeldReadyHandle {
+    return runEnsureReady(NativeModules.MeldModule, readyEvents(), session, handlers, options);
+  },
+
+  /**
+   * Open the hosted verification page a refused order carried
+   * (`serviceProviderDetails.hostedVerificationUrl`), then create the order again with a new
+   * `externalOrderId`. Resolves once the customer closed the page; https pages only.
+   */
+  openHostedVerification(url: string): Promise<void> {
+    return openHostedVerificationOn(NativeModules.MeldModule, url);
   },
 };
 
