@@ -23,14 +23,14 @@ to add to your `Podfile`. Just install with **static frameworks** (`MeldSDK` is 
 cd ios && USE_FRAMEWORKS=static pod install
 ```
 
-This release (0.11.0) requires **MeldSDK 0.11.x** (`~> 0.11.0`) for Coinme card, on top of the
-readiness checks 0.10 introduced.
+This release (0.12.0) requires **MeldSDK 0.12.x** (`~> 0.12.0`) for `Meld.ensureReady`, on top of
+Coinme card (0.11) and the readiness checks 0.10 introduced.
 
-**Before you upgrade, remove any MeldSDK pin of your own, or raise it to `~> 0.11.0`.** The wrapper's
+**Before you upgrade, remove any MeldSDK pin of your own, or raise it to `~> 0.12.0`.** The wrapper's
 podspec already brings MeldSDK, so your app needs no pin. Look for a Podfile line such as
-`pod 'MeldSDK', '~> 0.10.0'`, and in Expo for an `expo-build-properties` entry such as
-`"extraPods": [{ "name": "MeldSDK", "version": "~> 0.10.0" }]` (prebuild again after changing it).
-`pod update MeldSDK` does not change an explicit pin, and while one excludes 0.11, `pod install`
+`pod 'MeldSDK', '~> 0.11.0'`, and in Expo for an `expo-build-properties` entry such as
+`"extraPods": [{ "name": "MeldSDK", "version": "~> 0.11.0" }]` (prebuild again after changing it).
+`pod update MeldSDK` does not change an explicit pin, and while one excludes 0.12, `pod install`
 cannot find compatible versions for MeldSDK. Then update a Podfile.lock that still holds an earlier
 version with `pod update MeldSDK`.
 
@@ -38,7 +38,7 @@ To test the example against a local native checkout instead of the published pod
 
 ```bash
 cd example/ios
-MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.11.0 USE_FRAMEWORKS=static pod install
+MELD_IOS_SDK_PATH=/absolute/path/to/meldsdk-ios POD_VERSION=0.12.0 USE_FRAMEWORKS=static pod install
 ```
 
 The override compiles the native SDK from source and does not relax the minimum dependency; CI and

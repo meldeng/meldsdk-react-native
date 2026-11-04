@@ -15,5 +15,5 @@ Pod::Spec.new do |s|
 
   # The React Native host, and the native Meld SDK this wraps (kept in lockstep).
   s.dependency 'React-Core'
-  s.dependency 'MeldSDK', '~> 0.11.0'
+  s.dependency 'MeldSDK', '~> 0.12.0'
 end
