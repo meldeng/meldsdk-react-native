@@ -1,5 +1,11 @@
 import { useCallback, useState } from 'react';
-import { createOrder, type CreatedOrder, type PaymentMethodType } from '../api/meld';
+import {
+  createOrder,
+  mintRequirementsSession,
+  type CreatedOrder,
+  type PaymentMethodType,
+} from '../api/meld';
+import { describe, ensureReady } from '../requirements';
 
 // Owns the created order plus the create-order request state (busy/error). When `order` is set,
 // the app shows the widget screen; `closeOrder` returns to checkout.
@@ -25,6 +31,19 @@ export function useBuyFlow() {
         if (!customer) {
           setError('Set a Meld customer ID.');
           return;
+        }
+        // Run the provider's requirements first (terms, details, Meld KYC); create only once ready.
+        const session = await mintRequirementsSession(
+          provider,
+          customer,
+          paymentMethodType,
+        );
+        if (session) {
+          const result = await ensureReady(session);
+          if (result.status !== 'READY' && result.status !== 'UNDETERMINED') {
+            setError(describe(result));
+            return;
+          }
         }
         setCreated(await createOrder(provider, customer, wallet, paymentMethodType));
       } catch (e: any) {

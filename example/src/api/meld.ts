@@ -77,6 +77,28 @@ export async function fetchQuotes(
   );
 }
 
+// `POST /crypto/onramp/requirements-sessions` — the session the app hands to `Meld.ensureReady`,
+// scoped to this customer, the selected provider and the order about to be placed. null when the
+// account has no requirements sessions (they are enabled per account).
+export async function mintRequirementsSession(
+  serviceProvider: string,
+  customerId: string,
+  paymentMethodType: PaymentMethodType,
+): Promise<object | null> {
+  const res = await post('/crypto/onramp/requirements-sessions', {
+    customerId,
+    serviceProviders: [serviceProvider],
+    order: {
+      paymentMethodType,
+      sourceCurrencyCode: ORDER.sourceCurrencyCode,
+      sourceAmount: Number(ORDER.sourceAmount),
+      destinationCurrencyCode: ORDER.destinationCurrencyCode,
+      countryCode: ORDER.countryCode,
+    },
+  });
+  return res.status === 201 ? res.json() : null;
+}
+
 export async function createOrder(
   serviceProvider: string,
   customerId: string,
