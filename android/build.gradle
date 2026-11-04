@@ -9,7 +9,7 @@ def safeExtGet = { prop, fallback -> rootProject.ext.has(prop) ? rootProject.ext
 // `-PmeldSdkVersion=<v>` (or `rootProject.ext.meldSdkVersion`) builds against an unreleased native
 // SDK published with its `publishToMavenLocal`; Maven Local is then searched for io.meld only.
 def meldSdkOverride = findProperty("meldSdkVersion") ?: safeExtGet("meldSdkVersion", null)
-def meldSdkVersion = meldSdkOverride ?: "0.9.0"
+def meldSdkVersion = meldSdkOverride ?: "0.10.0"
 if (meldSdkOverride != null) {
     rootProject.allprojects {
         repositories {
@@ -49,4 +49,6 @@ dependencies {
     implementation "io.meld:meldsdk:${meldSdkVersion}"
 
     testImplementation "junit:junit:4.13.2"
+    // The SDK's JSON is org.json, a stub in local unit tests; this is the real implementation.
+    testImplementation "org.json:json:20240303"
 }

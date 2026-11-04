@@ -51,15 +51,16 @@ Nothing to wire up beyond autolinking: the wrapper's Gradle module pulls in the 
 projects. `minSdk 24`+. The Android SDK declares the `INTERNET` and `CAMERA` permissions (camera is
 used for in-widget KYC); they merge into your app automatically.
 
-This release requires **io.meld:meldsdk 0.9.0** for Coinme card, on top of the readiness checks
-0.8.0 introduced. To build against an unreleased native checkout instead, publish it to
-Maven Local and pass the same version to the app build:
+This release requires **io.meld:meldsdk 0.10.0** for `Meld.ensureReady`, on top of Coinme card
+(0.9.0) and the readiness checks 0.8.0 introduced. It brings `androidx.activity` and
+`androidx.browser` (Custom Tabs for hosted pages) with it. To build against an unreleased native
+checkout instead, publish it to Maven Local and pass the same version to the app build:
 
 ```bash
 # in meldsdk-android
-./gradlew :meldsdk:publishToMavenLocal -PmeldsdkVersion=0.9.0-local
-# in the app's android/ directory (or export ORG_GRADLE_PROJECT_meldSdkVersion=0.9.0-local)
-./gradlew :app:assembleDebug -PmeldSdkVersion=0.9.0-local
+./gradlew :meldsdk:publishToMavenLocal -PmeldsdkVersion=0.10.0-local
+# in the app's android/ directory (or export ORG_GRADLE_PROJECT_meldSdkVersion=0.10.0-local)
+./gradlew :app:assembleDebug -PmeldSdkVersion=0.10.0-local
 ```
 
 The override searches Maven Local for the `io.meld` group only. Without it the wrapper resolves
